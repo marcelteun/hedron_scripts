@@ -1,6 +1,9 @@
-# Version 5.14
-# Addons: pygame, moderngl, numpy
-#
+"""This script can be used to browse directories with OFF files.
+
+It shows a grid of 2D representations of the 3D objects and can show some prooperties of the
+polyhedra.
+"""
+
 """
 HELP TEXT
 When you open a grid window the sort mode will be greyed out while it calculates the metrics for the off files.  Once it has done this and you select a sort order, duplicate values of the sort parameter are highlighted in pink.  The delete duplicates button will keep the oldest file with any one value.   Float parameters have a small tolerance built in.
