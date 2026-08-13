@@ -855,7 +855,15 @@ class OFFCheckerGUI:
             line_count = result.count('\n') + 1
             self.text_area.configure(height=line_count)
 
-if __name__ == "__main__":
+def main():
     root = tk.Tk()
-    app = OFFCheckerGUI(root)
+    try:
+        app = OFFCheckerGUI(root)
+    except AttributeError as error:
+        raise ValueError(
+            "This tool requires a MS Windows. Did you try to run this on another OS? "
+        ) from error
     root.mainloop()
+
+if __name__ == "__main__":
+        main()
