@@ -8,14 +8,14 @@ When you open a grid window the sort mode will be greyed out while it calculates
 - Auto rotate is fun but wait until the sort button blacks up or you'll slow it down.
 - + (or =) and - will zoom the cells on the grid screen-
 - Any polyhedron can be rotated by left dragging with the mouse ot=r by using the arrow keys
-- Double click on an image to get to the enlarged screen.  
+- Double click on an image to get to the enlarged screen.
   - The left and right arrows are previous/next file.
   - 'f' on the enlarged screen will cycle through the faces one by one.
   - 'v' does the same with the vertices
   - 'e' does some edge options
   - 'x' to return to the original view
-- The grid view also has some functions if you right click. 
-- The offcheck.py file is also a standalone checker.  If you change the metrics that this is calculating they should flow through into offviewer automatically.   
+- The grid view also has some functions if you right click.
+- The offcheck.py file is also a standalone checker.  If you change the metrics that this is calculating they should flow through into offviewer automatically.
 - The path and 'search' at the top of the grid screen don't work (yet) and will probably be removed
 
 """
@@ -34,6 +34,8 @@ import tkinter as tk
 #from numba import njit
 from tkinter import simpledialog, messagebox
 from collections import defaultdict
+
+from offviewer.offcheck import verify_off_logic
 
 # Configuration
 AUTO_ROTATION_SPEED = -0.0002
@@ -101,13 +103,13 @@ def triangulate_simple_polygon(indices, verts_2d):
         return []
     if n == 3:
         return [indices]
-        
+
     poly = list(indices)
     triangles = []
-    
+
     def is_ccw(p1, p2, p3):
         return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p3[0] - p1[0]) * (p2[1] - p1[1]) > 0
-        
+
     def is_inside_triangle(p, a, b, c):
         v0 = np.array(c) - np.array(a)
         v1 = np.array(b) - np.array(a)
@@ -131,11 +133,11 @@ def triangulate_simple_polygon(indices, verts_2d):
             prev_idx = poly[i - 1]
             curr_idx = poly[i]
             next_idx = poly[(i + 1) % len(poly)]
-            
+
             p_prev = verts_2d[prev_idx]
             p_curr = verts_2d[curr_idx]
             p_next = verts_2d[next_idx]
-            
+
             if is_ccw(p_prev, p_curr, p_next):
                 any_inside = False
                 for idx in poly:
@@ -152,7 +154,7 @@ def triangulate_simple_polygon(indices, verts_2d):
         if not ear_found:
             triangles.append([poly[0], poly[1], poly[2]])
             poly.pop(1)
-            
+
     if len(poly) == 3:
         triangles.append(list(poly))
     return triangles
@@ -161,14 +163,14 @@ def load_off(filepath):
     try:
         with open(filepath, 'r', errors='ignore') as f:
             lines = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
-        
+
         if not lines:
             print(f"Error: {filepath} is empty or contains only comments.")
             return None, None, None, None, None
-            
+
         header = lines[0]
         is_coff = header.startswith('COFF')
-        
+
         start_idx = 1
         if header in ['OFF', 'COFF']:
             parts = lines[1].split()
@@ -178,13 +180,13 @@ def load_off(filepath):
         else:
             print(f"Error: {filepath} has invalid OFF header line: '{header}'")
             return None, None, None, None, None
-            
+
         num_verts = int(parts[0])
         num_faces = int(parts[1])
-        
+
         vertices = []
         vert_colors = []
-        
+
         vertex_lines = lines[start_idx : start_idx + num_verts]
         try:
             vertices_data = np.fromstring("\n".join(vertex_lines), sep=' ')
@@ -205,25 +207,25 @@ def load_off(filepath):
                     vert_colors.append(parse_color(line_parts[3:7]))
                 else:
                     vert_colors.append([0.7, 0.8, 0.9, 1.0])
-                
+
         faces = []
         face_colors = []
         triangle_to_face_map = []
         global_inter_map = {}
-        
+
         for i in range(num_faces):
             line_parts = lines[start_idx + num_verts + i].split()
             n_v = int(line_parts[0])
             face_verts = [int(x) for x in line_parts[1:1+n_v]]
-            
+
             color_parts = line_parts[1+n_v:]
             f_color = parse_color(color_parts, default_color=None) if color_parts else None
-            
+
             if n_v < 3:
                 continue
-                
+
             pts_3d = [np.array(vertices[idx], dtype='f4') for idx in face_verts]
-            
+
             N = np.zeros(3, dtype='f4')
             for k in range(n_v):
                 p_curr = pts_3d[k]
@@ -231,7 +233,7 @@ def load_off(filepath):
                 N[0] += (p_curr[1] - p_next[1]) * (p_curr[2] + p_next[2])
                 N[1] += (p_curr[2] - p_next[2]) * (p_curr[0] + p_next[0])
                 N[2] += (p_curr[0] - p_next[0]) * (p_curr[1] + p_next[1])
-                
+
             norm_N = np.linalg.norm(N)
             if norm_N < 1e-9:
                 for j in range(1, n_v - 1):
@@ -240,7 +242,7 @@ def load_off(filepath):
                     triangle_to_face_map.append(i)
                 continue
             N = N / norm_N
-            
+
             U = pts_3d[1] - pts_3d[0]
             U = U - np.dot(U, N) * N
             norm_U = np.linalg.norm(U)
@@ -248,7 +250,7 @@ def load_off(filepath):
                 U = pts_3d[2] - pts_3d[0]
                 U = U - np.dot(U, N) * N
                 norm_U = np.linalg.norm(U)
-                
+
             if norm_U < 1e-9:
                 if abs(N[0]) > 0.9:
                     U = np.array([0.0, 1.0, 0.0], dtype='f4')
@@ -258,16 +260,16 @@ def load_off(filepath):
                 U = U / np.linalg.norm(U)
             else:
                 U = U / norm_U
-                
+
             V = np.cross(N, U)
-            
+
             pts_2d = []
             for p in pts_3d:
                 pts_2d.append([float(np.dot(p - pts_3d[0], U)), float(np.dot(p - pts_3d[0], V))])
-                
+
             has_intersection = False
             edge_intersections = {k: [] for k in range(n_v)}
-            
+
             local_vertices = []
             for idx in range(n_v):
                 local_vertices.append({
@@ -275,7 +277,7 @@ def load_off(filepath):
                     '3d': pts_3d[idx].tolist(),
                     'color': vert_colors[face_verts[idx]]
                 })
-            
+
             for k in range(n_v):
                 for m in range(k + 2, n_v):
                     if k == 0 and m == n_v - 1:
@@ -286,13 +288,13 @@ def load_off(filepath):
                     if res is not None:
                         t, u = res
                         has_intersection = True
-                        
+
                         p3d_orig = (1 - t) * pts_3d[k] + t * pts_3d[(k + 1) % n_v]
                         p2d_orig = (1 - t) * np.array(A) + t * np.array(B)
                         color_A = np.array(vert_colors[face_verts[k]])
                         color_B = np.array(vert_colors[face_verts[(k + 1) % n_v]])
                         p_color = ((1 - t) * color_A + t * color_B).tolist()
-                        
+
                         v_idx = -1
                         for idx, v in enumerate(local_vertices):
                             if np.linalg.norm(v['2d'] - p2d_orig) < 1e-5:
@@ -305,10 +307,10 @@ def load_off(filepath):
                                 'color': p_color
                             })
                             v_idx = len(local_vertices) - 1
-                            
+
                         edge_intersections[k].append((t, v_idx))
                         edge_intersections[m].append((u, v_idx))
-            
+
             if not has_intersection:
                 local_indices = list(range(n_v))
                 local_tris = triangulate_simple_polygon(local_indices, pts_2d)
@@ -317,20 +319,20 @@ def load_off(filepath):
                     face_colors.append(f_color)
                     triangle_to_face_map.append(i)
                 continue
-                
+
             # Planar Graph Traversal Solver
             segments = []
             for k in range(n_v):
                 v_start = k
                 v_end = (k + 1) % n_v
                 inters = sorted(edge_intersections[k], key=lambda x: x[0])
-                
+
                 curr_idx = v_start
                 for _, inter_idx in inters:
                     segments.append((curr_idx, inter_idx))
                     curr_idx = inter_idx
                 segments.append((curr_idx, v_end))
-                
+
             cleaned_segments = []
             seen_segments = set()
             for u, v in segments:
@@ -340,35 +342,35 @@ def load_off(filepath):
                 if seg_key not in seen_segments:
                     seen_segments.add(seg_key)
                     cleaned_segments.append((u, v))
-                    
+
             adj = {idx: [] for idx in range(len(local_vertices))}
             half_edges = []
             half_edge_lookup = {}
-            
+
             for u, v in cleaned_segments:
                 half_edges.append({'from': u, 'to': v, 'visited': False})
                 half_edge_lookup[(u, v)] = len(half_edges) - 1
                 adj[u].append(v)
-                
+
                 half_edges.append({'from': v, 'to': u, 'visited': False})
                 half_edge_lookup[(v, u)] = len(half_edges) - 1
                 adj[v].append(u)
-                
+
             sorted_adj = {}
             for u in range(len(local_vertices)):
                 def get_angle(v):
                     diff = local_vertices[v]['2d'] - local_vertices[u]['2d']
                     return math.atan2(diff[1], diff[0])
                 sorted_adj[u] = sorted(adj[u], key=get_angle)
-                
+
             loops = []
             for he_idx, he in enumerate(half_edges):
                 if he['visited']:
                     continue
-                    
+
                 cycle = []
                 curr_he_idx = he_idx
-                
+
                 while True:
                     curr_he = half_edges[curr_he_idx]
                     if curr_he['visited']:
@@ -377,15 +379,15 @@ def load_off(filepath):
                     u = curr_he['from']
                     v = curr_he['to']
                     cycle.append(v)
-                    
+
                     v_neighbors = sorted_adj[v]
                     u_idx = v_neighbors.index(u)
                     next_neighbor = v_neighbors[(u_idx - 1) % len(v_neighbors)]
                     curr_he_idx = half_edge_lookup[(v, next_neighbor)]
-                    
+
                 if len(cycle) >= 3:
                     loops.append(cycle)
-                    
+
             interior_loops = []
             for cycle in loops:
                 area = 0.0
@@ -397,13 +399,13 @@ def load_off(filepath):
                 area = 0.5 * area
                 if area > 1e-7:
                     interior_loops.append(cycle)
-                    
+
             coord_to_global = {}
             for idx in face_verts:
                 p = vertices[idx]
                 key = (round(p[0], 6), round(p[1], 6), round(p[2], 6))
                 coord_to_global[key] = idx
-                
+
             def get_global_index(p3d, p_col):
                 key = (round(p3d[0], 6), round(p3d[1], 6), round(p3d[2], 6))
                 if key in coord_to_global:
@@ -415,7 +417,7 @@ def load_off(filepath):
                 vert_colors.append(p_col)
                 global_inter_map[key] = g_idx
                 return g_idx
-                
+
             for loop in interior_loops:
                 loop_2d = [local_vertices[v_idx]['2d'] for v_idx in loop]
                 local_indices = list(range(len(loop_2d)))
@@ -429,10 +431,10 @@ def load_off(filepath):
                     faces.append(g_tri)
                     face_colors.append(f_color)
                     triangle_to_face_map.append(i)
-                    
+
         if len(faces) == 0:
             print(f"Warning: {filepath} has 0 faces after triangulation.")
-            
+
         return np.array(vertices, dtype='f4'), np.array(faces, dtype='i4'), vert_colors, face_colors, triangle_to_face_map
     except Exception as e:
         print(f"Error loading {filepath}: {e}")
@@ -465,7 +467,7 @@ def create_lookat_matrix(eye, target, up):
     xaxis_norm = np.linalg.norm(xaxis)
     xaxis = xaxis / (xaxis_norm if xaxis_norm != 0 else 1.0)
     yaxis = np.cross(zaxis, xaxis)
-    
+
     return np.array([
         [xaxis[0], yaxis[0], zaxis[0], 0],
         [xaxis[1], yaxis[1], zaxis[1], 0],
@@ -501,21 +503,21 @@ class ModelViewer:
         self.ctx = ctx
         self.program = program_3d
         self.metrics = {}
-        
+
         self.rot_mat = np.eye(3, dtype='f4')
-        
+
         verts, faces, vert_colors, face_colors, tri_to_face = load_off(filepath)
         if verts is None or faces is None or len(faces) == 0 or len(verts) == 0:
             self.valid = False
             return
         self.valid = True
-        
+
         centroid = np.mean(verts, axis=0)
         verts = verts - centroid
         max_span = np.max(np.linalg.norm(verts, axis=1))
         if max_span > 0:
             verts = verts / max_span
-            
+
         tri_verts = verts[faces]
         v0 = tri_verts[:, 0, :]
         v1 = tri_verts[:, 1, :]
@@ -524,15 +526,15 @@ class ModelViewer:
         norms = np.linalg.norm(normals, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
         normals = normals / norms
-        
+
         num_triangles = len(faces)
         vbo_array = np.zeros((num_triangles, 3, 10), dtype='f4')
         vbo_array[:, :, 0:3] = verts[faces]
         vbo_array[:, :, 7:10] = normals[:, np.newaxis, :]
-        
+
         vert_colors_arr = np.array(vert_colors, dtype='f4')
         default_colors = vert_colors_arr[faces]
-        
+
         face_colors_clean = [fc for fc in face_colors if fc is not None]
         if len(face_colors_clean) == 0:
             vbo_array[:, :, 3:7] = default_colors
@@ -541,7 +543,7 @@ class ModelViewer:
             for i, f_col in enumerate(face_colors):
                 if f_col is not None:
                     vbo_array[i, :, 3:7] = f_col
-                    
+
         self.vbo_data = vbo_array.ravel()
         self.vbo = ctx.buffer(self.vbo_data.tobytes())
         self.vao = ctx.vertex_array(self.program, [
@@ -573,7 +575,7 @@ class ModelViewer:
         for i in range(len(faces)):
             orig_face_idx = tri_to_face[i]
             face_triangles[orig_face_idx].append(faces[i])
-            
+
         self.face_boundary_edges = {}
         for orig_face_idx, tris in face_triangles.items():
             edge_counts = defaultdict(int)
@@ -582,7 +584,7 @@ class ModelViewer:
                     edge_key = tuple(sorted((u, v)))
                     edge_counts[edge_key] += 1
             self.face_boundary_edges[orig_face_idx] = [edge for edge, count in edge_counts.items() if count == 1]
-            
+
         all_edges_set = set()
         for edges in self.face_boundary_edges.values():
             all_edges_set.update(edges)
@@ -601,7 +603,7 @@ class ModelViewer:
                 [-s, 0, c]
             ], dtype='f4')
             self.rot_mat = self.rot_mat @ ry
-            
+
         if dy != 0:
             c, s = math.cos(dy), math.sin(dy)
             rx = np.array([
@@ -620,7 +622,7 @@ class ModelViewer:
                 p = v + pos
                 n = v / np.linalg.norm(v) if np.linalg.norm(v) > 0 else np.array([0.0, 1.0, 0.0], dtype='f4')
                 translated_data.extend([p[0], p[1], p[2]] + black_color + [n[0], n[1], n[2]])
-        
+
         temp_vbo = self.ctx.buffer(np.array(translated_data, dtype='f4').tobytes())
         temp_vao = self.ctx.vertex_array(self.program, [
             (temp_vbo, '3f 4f 3f', 'in_position', 'in_color', 'in_normal')
@@ -640,7 +642,7 @@ class ModelViewer:
             pos_v = verts[v]
             edge_vbo_data.extend([pos_u[0], pos_u[1], pos_u[2]] + black_color + dummy_normal)
             edge_vbo_data.extend([pos_v[0], pos_v[1], pos_v[2]] + black_color + dummy_normal)
-            
+
         edge_vbo_bytes = np.array(edge_vbo_data, dtype='f4').tobytes()
         temp_vbo = self.ctx.buffer(edge_vbo_bytes)
         temp_vao = self.ctx.vertex_array(self.program, [
@@ -654,10 +656,10 @@ class ModelViewer:
         if not self.valid:
             return
         self.ctx.viewport = viewport
-        
+
         eye = self.rot_mat @ np.array([0.0, 0.0, 3.0], dtype='f4')
         up = self.rot_mat @ np.array([0.0, 1.0, 0.0], dtype='f4')
-        
+
         # Calculate horizontal camera pan offset relative to camera frame
         if target_x != 0.0:
             zaxis = eye - np.array([0.0, 0.0, 0.0], dtype='f4')
@@ -668,13 +670,13 @@ class ModelViewer:
             target = target_x * right
         else:
             target = np.array([0.0, 0.0, 0.0], dtype='f4')
-            
+
         proj = create_perspective_matrix(45.0, aspect, 0.1, 10.0)
         view = create_lookat_matrix(eye, target, up)
-        
+
         self.program['u_proj'].write(proj.tobytes())
         self.program['u_view'].write(view.tobytes())
-        
+
         if active_face_index != -1 and active_face_index in self.face_ranges:
             start_v, count_v = self.face_ranges[active_face_index]
             self.vao.render(moderngl.TRIANGLES, vertices=count_v, first=start_v)
@@ -704,7 +706,7 @@ class ModelViewer:
                     edges_to_draw = self.all_edges
             else:
                 edges_to_draw = self.all_edges
-                
+
             self.render_edges(edges_to_draw, self.verts)
 
 def run_bg_analysis(folder, viewers_list):
@@ -712,18 +714,6 @@ def run_bg_analysis(folder, viewers_list):
     my_run_id = bg_run_id[0]
 
     def worker():
-        try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location("offcheck", "offcheck.py")
-            if spec is None:
-                return
-            offcheck = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(offcheck)
-            verify_off_logic = offcheck.verify_off_logic
-        except Exception as e:
-            print(f"Failed to load offcheck for background analysis: {e}")
-            return
-
         results = []
         all_keys = set()
 
@@ -755,10 +745,10 @@ def run_bg_analysis(folder, viewers_list):
 
         dynamic_headers = [h for h in headers_list if h.startswith("Faces (") or h.startswith("Valence (")]
         base_headers = [h for h in headers_list if h not in dynamic_headers]
-        
+
         base_headers.sort()
         dynamic_headers.sort(key=extract_num)
-        
+
         headers = ["Filename"] + base_headers + dynamic_headers + ["Detail"]
 
         csv_path = os.path.join(folder, '.offviewer_temp.csv')
@@ -771,7 +761,7 @@ def run_bg_analysis(folder, viewers_list):
                         return
                     row_data = {h: row.get(h, "") for h in headers}
                     writer.writerow(row_data)
-            
+
             if bg_run_id[0] != my_run_id:
                 try:
                     os.remove(csv_path)
@@ -790,26 +780,12 @@ def run_bg_analysis(folder, viewers_list):
 def run_single_analysis(filepath, state):
     state['active_report'] = "Generating offcheck report..."
     state['needs_redraw'] = 2
-    
+
     def worker():
-        try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location("offcheck", "offcheck.py")
-            if spec is None:
-                state['active_report'] = "Failed to load offcheck.py"
-                state['needs_redraw'] = 2
-                return
-            offcheck = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(offcheck)
-            verify_off_logic = offcheck.verify_off_logic
-            
-            report = verify_off_logic(os.path.abspath(filepath), run_symmetry=False)
-            state['active_report'] = report
-            state['needs_redraw'] = 2
-        except Exception as e:
-            state['active_report'] = f"Error during offcheck execution:\n{e}"
-            state['needs_redraw'] = 2
-            
+        report = verify_off_logic(os.path.abspath(filepath), run_symmetry=False)
+        state['active_report'] = report
+        state['needs_redraw'] = 2
+
     t = threading.Thread(target=worker, daemon=True)
     t.start()
 
@@ -852,20 +828,20 @@ def sort_viewers_by_metric(metric, viewers):
                     return (0, v_num, e_num, f_num)
             except (ValueError, TypeError):
                 pass
-            
+
             val = v.metrics.get(metric, "")
             if val == "" or val is None:
                 return (2, (0, 0, 0))
             if val in ("N/A", "Error", "nan", "NaN"):
                 return (1, val.lower())
-            
+
             nums = [int(n) for n in re.findall(r'\d+', str(val))]
             if len(nums) >= 3:
                 return (0, nums[0], nums[1], nums[2])
             elif len(nums) > 0:
                 nums.extend([0] * (3 - len(nums)))
                 return (0, nums[0], nums[1], nums[2])
-                
+
             return (1, str(val).lower())
         viewers.sort(key=get_sort_key)
     else:
@@ -898,7 +874,7 @@ def init_gl_resources(ctx):
         v_normal = mat3(u_view) * in_normal;
     }
     """
-    
+
     fs_3d = """
     #version 330
     in vec4 v_color;
@@ -912,17 +888,17 @@ def init_gl_resources(ctx):
         vec3 light_dir1 = normalize(vec3(0.5, 0.5, 1.0));
         vec3 light_dir2 = normalize(vec3(-0.5, -0.3, 0.8));
         vec3 light_dir3 = normalize(vec3(0.0, 1.0, -0.5));
-        
+
         float diff1 = max(dot(normal, light_dir1), 0.0) * 0.50;
         float diff2 = max(dot(normal, light_dir2), 0.0) * 0.25;
         float diff3 = max(dot(normal, light_dir3), 0.0) * 0.15;
-        
+
         float ambient = 0.35;
         vec3 final_light = v_color.rgb * (diff1 + diff2 + diff3 + ambient);
         fragColor = vec4(final_light, v_color.a);
     }
     """
-    
+
     vs_2d = """
     #version 330
     in vec2 in_position;
@@ -933,7 +909,7 @@ def init_gl_resources(ctx):
         v_texcoord = in_texcoord;
     }
     """
-    
+
     fs_2d = """
     #version 330
     in vec2 v_texcoord;
@@ -943,10 +919,10 @@ def init_gl_resources(ctx):
         fragColor = texture(u_texture, v_texcoord);
     }
     """
-    
+
     prog_3d = ctx.program(vertex_shader=vs_3d, fragment_shader=fs_3d)
     prog_2d = ctx.program(vertex_shader=vs_2d, fragment_shader=fs_2d)
-    
+
     quad_data = np.array([
         -1.0, -1.0, 0.0, 0.0,
          1.0, -1.0, 1.0, 0.0,
@@ -957,7 +933,7 @@ def init_gl_resources(ctx):
     ], dtype='f4')
     quad_vbo = ctx.buffer(quad_data.tobytes())
     quad_vao = ctx.vertex_array(prog_2d, [(quad_vbo, '2f 2f', 'in_position', 'in_texcoord')])
-    
+
     return prog_3d, prog_2d, quad_vao
 
 def show_bespoke_text_window(filepath):
@@ -965,25 +941,25 @@ def show_bespoke_text_window(filepath):
         root = tk.Tk()
         root.title(f"Source: {os.path.basename(filepath)}")
         root.geometry("650x550")
-        
+
         scrollbar_y = tk.Scrollbar(root, orient=tk.VERTICAL)
         scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
         scrollbar_x = tk.Scrollbar(root, orient=tk.HORIZONTAL)
         scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
-        
+
         text_widget = tk.Text(root, wrap=tk.NONE, yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set, font=("Courier New", 10))
         text_widget.pack(fill=tk.BOTH, expand=True)
-        
+
         scrollbar_y.config(command=text_widget.yview)
         scrollbar_x.config(command=text_widget.xview)
-        
+
         try:
             with open(filepath, 'r', errors='ignore') as f:
                 content = f.read()
             text_widget.insert(tk.END, content)
         except Exception as e:
             text_widget.insert(tk.END, f"Error opening file:\n{e}")
-            
+
         text_widget.config(state=tk.DISABLED)
         root.mainloop()
 
@@ -1019,7 +995,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
             state['active_face_index'] = -1
             state['active_vertex_index'] = -1
             state['active_report'] = None
-            
+
             state['sort_dropdown_enabled'] = False
             state['selected_sort_metric'] = "Default"
             state['sort_headers'] = []
@@ -1033,7 +1009,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
         elif event.type == MOUSEBUTTONDOWN:
             event_handled = False
             win_w, win_h = pygame.display.get_window_size()
-            
+
             if event.button == 4:
                 if state['dropdown_open'] and pygame.Rect(15, 102, 170, min(350, win_h - 120)).collidepoint(mx, my):
                     state['dropdown_scroll'] = max(0, state['dropdown_scroll'] - 20)
@@ -1063,10 +1039,10 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     menu_rect = pygame.Rect(cx, cy, 120, 80)
                     if menu_rect.collidepoint(mx, my):
                         relative_y = my - cy
-                        
+
                         root_temp = tk.Tk()
                         root_temp.withdraw()
-                        
+
                         if relative_y < 20: # Rename option
                             old_name = viewers[state['context_menu_index']].filename
                             new_name = simpledialog.askstring("Rename File", "Enter new name:", initialvalue=old_name)
@@ -1106,19 +1082,19 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                         else: # View Source option
                             target_v = viewers[state['context_menu_index']]
                             show_bespoke_text_window(target_v.filepath)
-                                    
+
                         root_temp.destroy()
                         state['context_menu_open'] = False
                         event_handled = True
                     else:
                         state['context_menu_open'] = False
-                
+
                 # Check Left/Right enlarged view buttons
                 elif state['fullscreen_index'] != -1 and len(viewers) > 0:
                     prev_btn_rect = pygame.Rect(win_w - 210, win_h - 45, 40, 30)
                     next_btn_rect = pygame.Rect(win_w - 160, win_h - 45, 40, 30)
                     grid_btn_rect = pygame.Rect(win_w - 110, win_h - 45, 90, 30)
-                    
+
                     if prev_btn_rect.collidepoint(mx, my):
                         new_idx = (state['fullscreen_index'] - 1) % len(viewers)
                         state['fullscreen_index'] = new_idx
@@ -1146,7 +1122,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                         state['active_report'] = None
                         state['needs_redraw'] = 2
                         event_handled = True
-                        
+
                 if not event_handled and state['dropdown_open'] and state['sort_dropdown_enabled']:
                     dp_h = min(350, win_h - 120)
                     if pygame.Rect(15, 102, 170, dp_h).collidepoint(mx, my):
@@ -1160,11 +1136,11 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                         event_handled = True
                     else:
                         state['dropdown_open'] = False
-                
+
                 if not event_handled and pygame.Rect(15, 32, 170, 18).collidepoint(mx, my):
                     state['auto_rotate'] = not state['auto_rotate']
                     event_handled = True
-                    
+
                 if not event_handled and state['sort_dropdown_enabled'] and pygame.Rect(15, 75, 170, 22).collidepoint(mx, my):
                     state['dropdown_open'] = not state['dropdown_open']
                     event_handled = True
@@ -1175,12 +1151,12 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     if selected_metric != "Default" and len(viewers) > 1:
                         groups = []
                         current_group = [viewers[0]]
-                        
+
                         for v in viewers[1:]:
                             prev_v = current_group[-1]
                             val1 = v.metrics.get(selected_metric, "")
                             val2 = prev_v.metrics.get(selected_metric, "")
-                            
+
                             is_equal = False
                             if val1 is not None and val2 is not None and val1 != "" and val2 != "":
                                 if val1 == val2:
@@ -1193,14 +1169,14 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                             is_equal = True
                                     except (ValueError, TypeError):
                                         pass
-                                        
+
                             if is_equal:
                                 current_group.append(v)
                             else:
                                 groups.append(current_group)
                                 current_group = [v]
                         groups.append(current_group)
-                        
+
                         to_delete = []
                         for group in groups:
                             if len(group) > 1:
@@ -1212,10 +1188,10 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                         mtimes.append((float('inf'), v))
                                 mtimes.sort(key=lambda x: x[0])
                                 oldest_v = mtimes[0][1]
-                                
+
                                 for m, v in mtimes[1:]:
                                     to_delete.append(v)
-                                    
+
                         if to_delete:
                             deleted_count = 0
                             for v in to_delete:
@@ -1227,16 +1203,16 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                     deleted_count += 1
                                 except Exception as e:
                                     print(f"Error deleting duplicate {v.filename}: {e}")
-                            
+
                             run_bg_analysis(state['current_folder'], viewers)
                             state['needs_redraw'] = 2
-                            
+
                             root_temp = tk.Tk()
                             root_temp.withdraw()
                             messagebox.showinfo("Delete Duplicates", f"Deleted {deleted_count} duplicate files. Kept the oldest from each set.")
                             root_temp.destroy()
                     event_handled = True
-                
+
                 if not event_handled:
                     on_scrollbar_track = (mx >= win_w - 12)
                     grid_h = win_h - top_bar_h
@@ -1271,7 +1247,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                             state['active_face_index'] = -1
                             state['active_vertex_index'] = -1
                             state['active_report'] = None
-                            
+
                             state['sort_dropdown_enabled'] = False
                             state['selected_sort_metric'] = "Default"
                             state['sort_headers'] = []
@@ -1285,7 +1261,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                         current_time = pygame.time.get_ticks()
                         time_diff = current_time - state['last_click_time']
                         state['last_click_time'] = current_time
-                        
+
                         if time_diff < double_click_threshold:
                             if state['fullscreen_index'] != -1:
                                 state['fullscreen_index'] = -1
@@ -1380,27 +1356,27 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
     grid_w = win_w - sidebar_w
     grid_h = win_h - top_bar_h
     cols = max(1, (grid_w - padding) // (item_w + padding))
-    
+
     ui_surf = pygame.Surface((win_w, win_h), pygame.SRCALPHA)
     ui_surf.fill((0, 0, 0, 0))
-    
+
     pygame.draw.rect(ui_surf, (255, 255, 255), (sidebar_w, top_bar_h, grid_w, grid_h))
-    
+
     if state['fullscreen_index'] != -1:
         if 0 <= state['fullscreen_index'] < len(viewers):
             v = viewers[state['fullscreen_index']]
-            
+
             # Draw standard background panel and border
             pygame.draw.rect(ui_surf, (255, 255, 255), (sidebar_w + 10, top_bar_h + 10, grid_w - 20, win_h - top_bar_h - 20))
             pygame.draw.rect(ui_surf, (150, 150, 150), (sidebar_w + 10, top_bar_h + 10, grid_w - 20, win_h - top_bar_h - 20), 1)
-            
+
             # Clear transparent hole across the dynamic 3D display region so model can shine through
             view_h = win_h - top_bar_h - 60
             report_active = bool(state.get('active_report'))
             viewport_w_hole = grid_w - 440 - 30 if report_active else grid_w - 22
-            
+
             ui_surf.fill((0, 0, 0, 0), (sidebar_w + 11, top_bar_h + 15, viewport_w_hole, view_h))
-            
+
             # Draw solid report overlay box on the right of the cleared area if active
             report_text = state.get('active_report')
             if report_text:
@@ -1408,10 +1384,10 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
                 report_x = win_w - report_w - 20
                 report_y = top_bar_h + 20
                 report_h = win_h - top_bar_h - 80
-                
+
                 pygame.draw.rect(ui_surf, (248, 249, 250), (report_x, report_y, report_w, report_h))
                 pygame.draw.rect(ui_surf, (220, 224, 230), (report_x, report_y, report_w, report_h), 1)
-                
+
                 font_mono = pygame.font.SysFont('consolas', 12)
                 lines = report_text.split('\n')
                 ty = report_y + 10
@@ -1421,7 +1397,7 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
                     txt_surface = font_mono.render(line, True, (40, 40, 40))
                     ui_surf.blit(txt_surface, (report_x + 15, ty))
                     ty += 16
-                    
+
             selected_metric = state.get('selected_sort_metric', 'Default')
             label_x = sidebar_w + 30
             if selected_metric != "Default":
@@ -1433,21 +1409,21 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
             else:
                 lbl = font_bold.render(v.filename, True, (40, 40, 40))
                 ui_surf.blit(lbl, (label_x, win_h - 38))
-                
+
             active_face = state.get('active_face_index', -1)
             if active_face != -1:
                 face_lbl = font_bold.render(f"Displaying Original Face {active_face + 1} / {v.num_original_faces}", True, (255, 50, 50))
                 ui_surf.blit(face_lbl, (label_x, top_bar_h + 30))
-                
+
             active_vertex = state.get('active_vertex_index', -1)
             if active_vertex != -1:
                 vertex_lbl = font_bold.render(f"Displaying Faces Adjacent to Vertex {active_vertex + 1} / {v.num_vertices}", True, (255, 50, 50))
                 ui_surf.blit(vertex_lbl, (label_x, top_bar_h + 30))
-                
+
             prev_btn_rect = pygame.Rect(win_w - 210, win_h - 45, 40, 30)
             next_btn_rect = pygame.Rect(win_w - 160, win_h - 45, 40, 30)
             grid_btn_rect = pygame.Rect(win_w - 110, win_h - 45, 90, 30)
-            
+
             if prev_btn_rect.collidepoint(mx, my):
                 pygame.draw.rect(ui_surf, (220, 230, 245), prev_btn_rect)
                 pygame.draw.rect(ui_surf, (100, 150, 220), prev_btn_rect, 1)
@@ -1456,7 +1432,7 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
                 pygame.draw.rect(ui_surf, (180, 180, 180), prev_btn_rect, 1)
             prev_lbl = font_bold.render("<", True, (50, 50, 50))
             ui_surf.blit(prev_lbl, prev_lbl.get_rect(center=prev_btn_rect.center))
-            
+
             if next_btn_rect.collidepoint(mx, my):
                 pygame.draw.rect(ui_surf, (220, 230, 245), next_btn_rect)
                 pygame.draw.rect(ui_surf, (100, 150, 220), next_btn_rect, 1)
@@ -1477,34 +1453,34 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
     else:
         prev_val = None
         selected_metric = state.get('selected_sort_metric', 'Default')
-        
+
         for i, v in enumerate(viewers):
             row = i // cols
             col = i % cols
-            
+
             x = sidebar_w + padding + col * (item_w + padding)
             y = top_bar_h + padding + row * (item_h + padding) - int(state['scroll_y'])
-            
+
             current_val = v.metrics.get(selected_metric, None) if selected_metric != "Default" else None
-            
+
             if y + item_h < top_bar_h or y > win_h:
                 prev_val = current_val
                 continue
-            
+
             is_hov = (i == state['hovered_index'])
             bg_col = (233, 244, 253, 255) if is_hov else (255, 255, 255, 255)
             border_col = (153, 201, 239) if is_hov else (229, 229, 229)
-            
+
             pygame.draw.rect(ui_surf, bg_col, (x, y, item_w, item_h))
             pygame.draw.rect(ui_surf, border_col, (x, y, item_w, item_h), 1)
-            
+
             role_y = max(top_bar_h, y + 1)
             hole_h = min(win_h, y + item_w - 1) - role_y
             if hole_h > 0:
                 ui_surf.fill((0, 0, 0, 0), (x + 1, role_y, item_w - 2, hole_h))
-            
+
             pygame.draw.rect(ui_surf, border_col, (x, y, item_w, item_w), 1)
-            
+
             is_equal = False
             if selected_metric != "Default" and current_val is not None and prev_val is not None and current_val != "" and prev_val != "":
                 if current_val == prev_val:
@@ -1521,7 +1497,7 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
             if selected_metric != "Default" and is_equal:
                 shading_rect = pygame.Rect(x + 5, y + item_w + 5, item_w - 10, text_area_h - 10)
                 pygame.draw.rect(ui_surf, (255, 215, 225), shading_rect, border_radius=4)
-            
+
             if selected_metric != "Default":
                 lbl = font.render(v.filename, True, (40, 40, 40))
                 lbl_rect = lbl.get_rect(center=(x + item_w // 2, y + item_w + 15))
@@ -1537,38 +1513,38 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
                 lbl_rect = lbl.get_rect(center=(x + item_w // 2, y + item_w + text_area_h // 2))
                 if top_bar_h < lbl_rect.centery < win_h:
                     ui_surf.blit(lbl, lbl_rect)
-                
+
             prev_val = current_val
 
     pygame.draw.rect(ui_surf, (252, 252, 252), (0, 0, sidebar_w, win_h))
     pygame.draw.rect(ui_surf, (243, 243, 243), (sidebar_w, 0, grid_w, top_bar_h))
     pygame.draw.line(ui_surf, (220, 220, 220), (sidebar_w, 0), (sidebar_w, win_h), 1)
     pygame.draw.line(ui_surf, (220, 220, 220), (sidebar_w, top_bar_h), (win_w, top_bar_h), 1)
-    
+
     suffix = "file" if off_files_count == 1 else "files"
     txt_ctrl = font_bold.render(f"{off_files_count} OFF {suffix}", True, (0, 0, 0))
     ui_surf.blit(txt_ctrl, (15, 15))
-    
+
     pygame.draw.rect(ui_surf, (230, 230, 230), (15, 35, 12, 12))
     pygame.draw.rect(ui_surf, (150, 150, 150), (15, 35, 12, 12), 1)
     if state['auto_rotate']:
         pygame.draw.rect(ui_surf, (0, 102, 204), (18, 38, 6, 6))
     txt_rotate = font.render("Auto-rotate Models", True, (50, 50, 50))
     ui_surf.blit(txt_rotate, (35, 33))
-    
+
     txt_sort_lbl = font.render("Sort models by:", True, (120, 120, 120))
     ui_surf.blit(txt_sort_lbl, (15, 58))
-    
+
     bg_drop = (255, 255, 255) if state['sort_dropdown_enabled'] else (240, 240, 240)
     border_drop = (180, 180, 180) if state['sort_dropdown_enabled'] else (220, 220, 220)
     text_drop_col = (50, 50, 50) if state['sort_dropdown_enabled'] else (160, 160, 160)
-    
+
     pygame.draw.rect(ui_surf, bg_drop, (15, 75, 170, 22))
     pygame.draw.rect(ui_surf, border_drop, (15, 75, 170, 22), 1)
-    
+
     curr_val_txt = font.render(state['selected_sort_metric'], True, text_drop_col)
     ui_surf.blit(curr_val_txt, (22, 78))
-    
+
     arrow_col = (100, 100, 100) if state['sort_dropdown_enabled'] else (180, 180, 180)
     pygame.draw.polygon(ui_surf, arrow_col, [(170, 83), (176, 83), (173, 88)])
 
@@ -1579,7 +1555,7 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
 
     panel_title = font_bold.render("Subfolders Panel", True, (0, 0, 0))
     ui_surf.blit(panel_title, (15, 130))
-    
+
     sy = 155
     for i, item in enumerate(subfolders):
         if sy + 25 > win_h:
@@ -1587,61 +1563,61 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
         is_parent = (item == "..")
         display_name = "[Parent Folder] .." if is_parent else f"📁 {item}"
         color = (0, 102, 204) if is_parent else (50, 50, 50)
-        
+
         if mx <= sidebar_w and sy <= my <= sy + 22 and (not state['dropdown_open'] or my < 102 or my > 102 + min(350, win_h - 120)):
             pygame.draw.rect(ui_surf, (230, 240, 250), (10, sy - 2, sidebar_w - 20, 22))
             pygame.draw.rect(ui_surf, (180, 200, 230), (10, sy - 2, sidebar_w - 20, 22), 1)
-            
+
         txt = font.render(display_name, True, color)
         ui_surf.blit(txt, (20, sy))
         sy += 25
-        
+
     pygame.draw.rect(ui_surf, (255, 255, 255), (sidebar_w + 15, 30, grid_w - 120, 30))
     pygame.draw.rect(ui_surf, (200, 200, 200), (sidebar_w + 15, 30, grid_w - 120, 30), 1)
     addr_txt = font.render(f"  {state['current_folder']}", True, (80, 80, 80))
     ui_surf.blit(addr_txt, (sidebar_w + 20, 36))
-    
+
     pygame.draw.rect(ui_surf, (255, 255, 255), (win_w - 90, 30, 75, 30))
     pygame.draw.rect(ui_surf, (200, 200, 200), (win_w - 90, 30, 75, 30), 1)
     search_txt = font.render("Search", True, (150, 150, 150))
     ui_surf.blit(search_txt, (win_w - 80, 36))
-    
+
     if state['fullscreen_index'] == -1 and state['max_scroll'] > 0:
         bar_h = max(30, int((grid_h / (state['max_scroll'] + grid_h)) * grid_h))
         bar_y = top_bar_h + int((state['scroll_y'] / state['max_scroll']) * (grid_h - bar_h))
         pygame.draw.rect(ui_surf, (240, 240, 240), (win_w - 12, top_bar_h, 12, grid_h))
         pygame.draw.rect(ui_surf, (200, 200, 200), (win_w - 10, bar_y, 8, bar_h), border_radius=4)
-        
+
     if state['dropdown_open'] and state['sort_dropdown_enabled']:
         all_options = ["Default"] + state['sort_headers']
         dropdown_max_h = min(350, win_h - 120)
         opt_h = 20
-        
+
         pygame.draw.rect(ui_surf, (255, 255, 255), (15, 102, 170, dropdown_max_h))
         pygame.draw.rect(ui_surf, (150, 150, 150), (15, 102, 170, dropdown_max_h), 1)
-        
+
         clip_prev = ui_surf.get_clip()
         ui_surf.set_clip(pygame.Rect(16, 103, 168, dropdown_max_h - 2))
-        
+
         for idx, opt in enumerate(all_options):
             oy = 102 + idx * opt_h - state['dropdown_scroll']
             if oy + opt_h < 102 or oy > 102 + dropdown_max_h:
                 continue
-            
+
             is_opt_hov = pygame.Rect(15, oy, 170, opt_h).collidepoint(mx, my) and pygame.Rect(15, 102, 170, dropdown_max_h).collidepoint(mx, my)
             if is_opt_hov:
                 pygame.draw.rect(ui_surf, (230, 240, 250), (16, oy, 168, opt_h))
-                
+
             opt_txt = font.render(opt, True, (40, 40, 40))
             ui_surf.blit(opt_txt, (22, oy + 3))
-            
+
         ui_surf.set_clip(clip_prev)
-        
+
     if state['context_menu_open']:
         cx, cy = state['context_menu_pos']
         pygame.draw.rect(ui_surf, (255, 255, 255), (cx, cy, 120, 80))
         pygame.draw.rect(ui_surf, (150, 150, 150), (cx, cy, 120, 80), 1)
-        
+
         if pygame.Rect(cx, cy, 120, 20).collidepoint(mx, my):
             pygame.draw.rect(ui_surf, (230, 240, 250), (cx + 1, cy + 1, 118, 18))
         elif pygame.Rect(cx, cy + 20, 120, 20).collidepoint(mx, my):
@@ -1650,27 +1626,27 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
             pygame.draw.rect(ui_surf, (230, 240, 250), (cx + 1, cy + 41, 118, 18))
         elif pygame.Rect(cx, cy + 60, 120, 20).collidepoint(mx, my):
             pygame.draw.rect(ui_surf, (230, 240, 250), (cx + 1, cy + 61, 118, 18))
-            
+
         txt_rename = font.render("Rename", True, (40, 40, 40))
         txt_delete = font.render("Delete", True, (40, 40, 40))
         txt_stella = font.render("Open in Stella", True, (40, 40, 40))
         txt_view_source = font.render("View Source", True, (40, 40, 40))
-        
+
         ui_surf.blit(txt_rename, (cx + 10, cy + 3))
         ui_surf.blit(txt_delete, (cx + 10, cy + 23))
         ui_surf.blit(txt_stella, (cx + 10, cy + 43))
         ui_surf.blit(txt_view_source, (cx + 10, cy + 63))
-        
+
     return ui_surf
 
 def main():
     import subprocess
-    
+
     pygame.init()
     pygame.font.init()
-    
+
     win_w, win_h = 1300, 750
-    
+
     try:
         screen_w, screen_h = 1920, 1080  # Default fallback
         if sys.platform == 'win32':
@@ -1681,27 +1657,27 @@ def main():
             info = pygame.display.Info()
             screen_w = info.current_w
             screen_h = info.current_h
-            
+
         # Center the window on the desktop
         x_pos = max(0, (screen_w - win_w) // 2)
         y_pos = max(0, (screen_h - win_h) // 2 - 30)
         os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x_pos},{y_pos}"
     except Exception as e:
         print(f"Error setting window position: {e}")
-    
+
     pygame.display.gl_set_attribute(pygame.GL_DEPTH_SIZE, 24)
     pygame.display.set_mode((win_w, win_h), pygame.OPENGL | pygame.DOUBLEBUF | pygame.RESIZABLE)
-    
+
     ctx = moderngl.create_context()
     ctx.enable(moderngl.DEPTH_TEST)
     ctx.enable(moderngl.BLEND)
     ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
-    
+
     prog_3d, prog_2d, quad_vao = init_gl_resources(ctx)
-    
+
     font = pygame.font.SysFont('segoeui', 12)
     font_bold = pygame.font.SysFont('segoeui', 13, bold=True)
-    
+
     current_folder = os.path.abspath('.')
     target_file = None
     fullscreen_index = -1
@@ -1716,7 +1692,7 @@ def main():
 
     viewers = load_viewers_from_folder(current_folder, ctx, prog_3d)
     subfolders = get_subfolders(current_folder)
-            
+
     # Central application UI & interactive state
     state = {
         'current_folder': current_folder,
@@ -1748,7 +1724,7 @@ def main():
         'checker_proc': None,
         'item_w': 180
     }
-    
+
     if target_file:
         for idx, v in enumerate(viewers):
             if v.filename == target_file:
@@ -1756,30 +1732,30 @@ def main():
                 state['fullscreen_index'] = idx
                 run_single_analysis(v.filepath, state)
                 break
-                
+
     sidebar_w = 200
     top_bar_h = 75
     padding = 25
     text_area_h = 45
-    
+
     clock = pygame.time.Clock()
     run_bg_analysis(state['current_folder'], viewers)
-    
+
     while state['running']:
         dt = clock.tick(60)
         dt = min(100, dt)
-        
+
         mx, my = pygame.mouse.get_pos()
         keys = pygame.key.get_pressed()
         keyboard_active = any(keys[k] for k in (K_LEFT, K_RIGHT, K_UP, K_DOWN))
-        
+
         if state['auto_rotate'] or keyboard_active or bg_csv_ready[0] or state['dragging'] or state['scrollbar_dragging']:
             state['needs_redraw'] = 2
-            
+
         events = pygame.event.get()
         if len(events) > 0:
             state['needs_redraw'] = 2
-            
+
         handle_events(events, state, viewers, subfolders, ctx, prog_3d)
 
         # Dynamic layout calculations based on current window size
@@ -1787,18 +1763,18 @@ def main():
         fb_w, fb_h = win_w, win_h
         sx = 1.0
         sy = 1.0
-        
+
         grid_w = win_w - sidebar_w
         grid_h = win_h - top_bar_h
-        
+
         item_w = state.get('item_w', 180)
         item_h = item_w + text_area_h
-        
+
         cols = max(1, (grid_w - padding) // (item_w + padding))
         total_rows = math.ceil(len(viewers) / cols)
         state['max_scroll'] = max(0, total_rows * (item_h + padding) + padding - grid_h)
         state['scroll_y'] = max(0.0, min(state['scroll_y'], state['max_scroll']))
-        
+
         try:
             off_files_count = len([f for f in os.listdir(state['current_folder']) if f.lower().endswith('.off')])
         except Exception:
@@ -1828,7 +1804,7 @@ def main():
                 pygame.display.set_caption("Enlarged View")
             else:
                 pygame.display.set_caption("Grid View")
-                
+
             active_viewer = None
             if state['fullscreen_index'] != -1:
                 if 0 <= state['fullscreen_index'] < len(viewers):
@@ -1836,7 +1812,7 @@ def main():
             elif state['hovered_index'] != -1:
                 if 0 <= state['hovered_index'] < len(viewers):
                     active_viewer = viewers[state['hovered_index']]
-                
+
             if active_viewer and not state['dragging']:
                 rot_val = 0.003 * dt
                 dx = 0.0
@@ -1850,12 +1826,12 @@ def main():
                 if keys[K_DOWN]:
                     dy = rot_val
                 active_viewer.rotate_camera(dx, dy)
-                
+
             if state['auto_rotate']:
                 rot_val = AUTO_ROTATION_SPEED * dt
                 for v in viewers:
                     v.rotate_camera(rot_val, 0.0)
-                    
+
             state['hovered_index'] = -1
             if state['fullscreen_index'] == -1:
                 for i in range(len(viewers)):
@@ -1867,21 +1843,21 @@ def main():
                         if mx > sidebar_w and my > top_bar_h:
                             state['hovered_index'] = i
                             break
-                            
+
             ctx.clear(1.0, 1.0, 1.0, 1.0)
-            
+
             if state['fullscreen_index'] != -1:
                 if 0 <= state['fullscreen_index'] < len(viewers):
                     v = viewers[state['fullscreen_index']]
-                    
+
                     viewport_x = sidebar_w + 10
                     v_y_gl = 45
-                    
+
                     # Allocate comfortable spacing based on active report
                     report_active = bool(state.get('active_report'))
                     viewport_w = win_w - viewport_x - 440 - 30 if report_active else win_w - viewport_x - 20
                     viewport_h = win_h - top_bar_h - 60
-                    
+
                     # Model remains centered locally inside its designated viewport (target_x = 0.0)
                     ctx.scissor = (int(viewport_x * sx), int(v_y_gl * sy), int(viewport_w * sx), int(viewport_h * sy))
                     v.render_3d((int(viewport_x * sx), int(v_y_gl * sy), int(viewport_w * sx), int(viewport_h * sy)), viewport_w / max(1, viewport_h), state['active_face_index'], 0.0, state.get('active_vertex_index', -1), state.get('edge_mode', 0))
@@ -1889,47 +1865,47 @@ def main():
                 for i, v in enumerate(viewers):
                     row = i // cols
                     col = i % cols
-                    
+
                     x = sidebar_w + padding + col * (item_w + padding)
                     y_from_top = top_bar_h + padding + row * (item_h + padding) - int(state['scroll_y'])
                     y_from_bottom = win_h - (y_from_top + item_h)
-                    
+
                     if y_from_top + item_h < top_bar_h or y_from_top > win_h:
                         continue
-                    
+
                     grid_bottom_gl = 0
                     grid_top_gl = win_h - top_bar_h
-                    
+
                     v_y_bottom = y_from_bottom + text_area_h
                     v_y_top = y_from_bottom + item_h
-                    
+
                     clamped_bottom = max(grid_bottom_gl, v_y_bottom)
                     clamped_top = min(grid_top_gl, v_y_top)
-                    
+
                     clamped_h = clamped_top - clamped_bottom
                     if clamped_h > 0:
                         ctx.scissor = (int((x + 1) * sx), int(clamped_bottom * sy), int((item_w - 2) * sx), int(clamped_h * sy))
                         v.render_3d((int((x + 1) * sx), int(v_y_bottom * sy), int((item_w - 2) * sx), int(item_w * sy)), sx / sy, edge_mode=state.get('edge_mode', 0))
-                        
+
             ctx.scissor = None
             ctx.viewport = (0, 0, int(fb_w), int(fb_h))
-            
+
             ui_surf = draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, mx, my, off_files_count)
-            
+
             ui_data = pygame.image.tostring(ui_surf, 'RGBA', True)
             ui_tex = ctx.texture((win_w, win_h), 4, ui_data)
             ui_tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
             ui_tex.use(0)
-            
+
             quad_vao.render(moderngl.TRIANGLES)
-            
+
             pygame.display.flip()
             ui_tex.release()
-            
+
             state['needs_redraw'] = max(0, state['needs_redraw'] - 1)
         else:
             pygame.time.wait(15)
-        
+
     if state.get('checker_proc'):
         try:
             state['checker_proc'].terminate()
@@ -1941,7 +1917,7 @@ def main():
             os.remove(bg_csv_path[0])
         except Exception:
             pass
-            
+
     pygame.quit()
 
 if __name__ == '__main__':
