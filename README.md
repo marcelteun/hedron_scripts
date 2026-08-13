@@ -15,6 +15,17 @@ This requires that you have uv installed, see [uv](https://docs.astral.sh/uv/get
 A released version can be installed by
 `pip install offviewer`
 
+It is wise to use a virtual Python environment, e.g. on Linux:
+```
+python -m venv path_to_venv
+. path_to_venv
+```
+
+Then the script can be run by:
+`offviewer [path-to-folder]`
+
+There is also a script `offchecker`, which only works on MS Windows.
+
 # The Off File Viewer
 When you open a grid window the sort mode will be greyed out while it
 calculates the metrics for the off files.  Once it has done this and you select
