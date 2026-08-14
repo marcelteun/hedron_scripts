@@ -1,18 +1,19 @@
 """This file can be used to get the properties of an object decribed in the OFF format."""
 
-import sys
-import os
-import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext
-from collections import defaultdict
-import math
-import windnd
-import ctypes
 import csv
-import importlib.util
-import re
+import ctypes
 import heapq
+import importlib.util
+import math
+import os
+import re
+import sys
+import tkinter as tk
+from collections import defaultdict
+from tkinter import filedialog, scrolledtext
+
 import numpy as np
+import windnd
 
 
 def calculate_face_normal_and_area(coords):
@@ -223,7 +224,7 @@ def check_planarity(coords, normal, tolerance=1e-6):
     for i in range(1, len(coords)):
         vec = (coords[i][0] - v0[0], coords[i][1] - v0[1], coords[i][2] - v0[2])
         dist = abs(vec[0] * normal[0] + vec[1] * normal[1] + vec[2] * normal[2])
-        max_dist = max_dist if max_dist > dist else dist
+        max_dist = max(dist, max_dist)
 
     return max_dist > tolerance, max_dist
 
@@ -477,8 +478,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         max_r_sq = 0.0
         for v in vertices:
             r_sq = (v[0] - cx) ** 2 + (v[1] - cy) ** 2 + (v[2] - cz) ** 2
-            if r_sq > max_r_sq:
-                max_r_sq = r_sq
+            max_r_sq = max(max_r_sq, r_sq)
         circumradius = math.sqrt(max_r_sq) if max_r_sq > 0 else 1.0
     else:
         circumradius = 1.0
@@ -554,10 +554,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
                         temp_f.write(f"{num_vertices} {len(parsed_faces)} 0\n")
                         for v in vertices:
                             temp_f.write(f"{v[0]} {v[1]} {v[2]}\n")
-                        for face in parsed_faces:
-                            temp_f.write(
-                                f"{len(face)} " + " ".join(map(str, face)) + "\n"
-                            )
+                        temp_f.writelines(f"{len(face)} " + " ".join(map(str, face)) + "\n" for face in parsed_faces)
                     target_filepath = temp_filepath
                 else:
                     target_filepath = filepath
@@ -945,7 +942,7 @@ class OFFCheckerGUI:
                         writer.writerow(row_data)
 
                 summary = [
-                    f"BATCH MODE COMPLETE",
+                    "BATCH MODE COMPLETE",
                     f"Folder: {folder}",
                     f"Processed {success_count} .off files.",
                     f"Results written to: {csv_path}",

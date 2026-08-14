@@ -4,21 +4,22 @@ It shows a grid of 2D representations of the 3D objects and can show some proope
 polyhedra.
 """
 
-import os
-import sys
+import csv
 import math
+import os
+import re
+import sys
+import threading
+import tkinter as tk
+from collections import defaultdict
+
+# from numba import njit
+from tkinter import messagebox, simpledialog
+
+import moderngl
 import numpy as np
 import pygame
 from pygame.locals import *
-import moderngl
-import threading
-import csv
-import re
-import tkinter as tk
-
-# from numba import njit
-from tkinter import simpledialog, messagebox
-from collections import defaultdict
 
 from offviewer.offcheck import verify_off_logic
 
@@ -1235,7 +1236,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                             else:
                                 messagebox.showerror(
                                     "Error",
-                                    f"Stella4D not found at expected Program Files paths.",
+                                    "Stella4D not found at expected Program Files paths.",
                                 )
                         else:  # View Source option
                             target_v = viewers[state["context_menu_index"]]
@@ -1928,7 +1929,6 @@ def draw_ui_surface(
 
 
 def main():
-    import subprocess
 
     pygame.init()
     pygame.font.init()
