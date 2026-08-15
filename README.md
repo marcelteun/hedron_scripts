@@ -1,5 +1,7 @@
 # About
-These scripts were written by Jim McNeill using AI tools. I decided it would be a good idea to add them to a git repo.
+These scripts were written by Jim McNeill using AI tools. I decided it would be
+a good idea to add them to a git repo. These files come as is and without any
+guaratees and I cannot promise that any problems will be solved any time soon.
 
 # Using Repository from Github
 
