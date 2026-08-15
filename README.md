@@ -40,10 +40,10 @@ Float parameters have a small tolerance built in.
 - Any polyhedron can be rotated by left dragging with the mouse ot=r by using the arrow keys
 - Double click on an image to get to the enlarged screen.
     - The left and right arrows are previous/next file.
-    - 'f' on the enlarged screen will cycle through the faces one by one.
-    - 'v' does the same with the vertices
-    - 'e' does some edge options
+    - 'f' on the enlarged screen will cycle through the face types one by one.
+    - 'v' cycles through the vertices
+    - 'e' does some edge options (also on the grid view)
     - 'x' to return to the original view
-- The grid view also has some functions if you right click.
+- The grid view also has some functions if you right click: delete, rename, view source, open in Stella.
 - The offcheck.py file is also a standalone checker.  If you change the metrics that this is calculating they should flow through into offviewer automatically.
 - The path and 'search' at the top of the grid screen don't work (yet) and will probably be removed
