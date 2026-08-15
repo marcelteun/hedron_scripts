@@ -1,4 +1,4 @@
-# Version 5.14
+# Version 5.20
 # Addons: pygame, moderngl, numpy
 #
 """
@@ -10,13 +10,20 @@ When you open a grid window the sort mode will be greyed out while it calculates
 - Any polyhedron can be rotated by left dragging with the mouse ot=r by using the arrow keys
 - Double click on an image to get to the enlarged screen.  
   - The left and right arrows are previous/next file.
-  - 'f' on the enlarged screen will cycle through the faces one by one.
-  - 'v' does the same with the vertices
-  - 'e' does some edge options
+  - 'f' on the enlarged screen will cycle through the face types one by one.
+  - 'v' cycles through the vertices
+  - 'e' does some edge options (also on the grid view)
   - 'x' to return to the original view
 - The grid view also has some functions if you right click. 
+  - delete, rename, view source, open in Stella.
 - The offcheck.py file is also a standalone checker.  If you change the metrics that this is calculating they should flow through into offviewer automatically.   
-- The path and 'search' at the top of the grid screen don't work (yet) and will probably be removed
+- Files offcheck.py and facetings_math.py are required to be in the same folder as this file.  
+Change log:
+140826 - The path and 'search' at the top of the grid screen now work.
+       - Symmetry is enabled in the offcheck link.  See variable below to switch it off if required.  
+       - 'f' mode on the enlarged view shows coplanar faces to the focus face as translucent.  Use ALPHA to control.
+       - 'f' now cycles through face types rather than all faces
+       - 'e' now also works as an edge on/off switch in grid view 
 
 """
 
@@ -31,6 +38,7 @@ import threading
 import csv
 import re
 import tkinter as tk
+import fnmatch
 #from numba import njit
 from tkinter import simpledialog, messagebox
 from collections import defaultdict
@@ -38,6 +46,8 @@ from collections import defaultdict
 # Configuration
 AUTO_ROTATION_SPEED = -0.0002
 SORT_TOLERANCE = 0.0001
+RUN_SYMMETRY_CALCULATION = False  # Set to True to enable symmetry calculation in offcheck
+ALPHA = 0.2  # Transparency value for coplanar faces in Enlarged view
 
 # Thread-safe signals for background analysis
 bg_csv_ready = [False]
@@ -528,16 +538,11 @@ class ModelViewer:
         num_triangles = len(faces)
         vbo_array = np.zeros((num_triangles, 3, 10), dtype='f4')
         vbo_array[:, :, 0:3] = verts[faces]
+        vbo_array[:, :, 3:7] = default_colors = np.array(vert_colors, dtype='f4')[faces]
         vbo_array[:, :, 7:10] = normals[:, np.newaxis, :]
         
-        vert_colors_arr = np.array(vert_colors, dtype='f4')
-        default_colors = vert_colors_arr[faces]
-        
         face_colors_clean = [fc for fc in face_colors if fc is not None]
-        if len(face_colors_clean) == 0:
-            vbo_array[:, :, 3:7] = default_colors
-        else:
-            vbo_array[:, :, 3:7] = default_colors
+        if len(face_colors_clean) > 0:
             for i, f_col in enumerate(face_colors):
                 if f_col is not None:
                     vbo_array[i, :, 3:7] = f_col
@@ -558,6 +563,15 @@ class ModelViewer:
             self.face_ranges[orig_face_idx][1] += 3
             current_vertex += 3
         self.num_original_faces = len(self.face_ranges)
+
+        # Precompute face planes for coplanar detection
+        self.face_planes = {}
+        for orig_face_idx, (start_v, count_v) in self.face_ranges.items():
+            tri_idx = start_v // 3
+            norm = normals[tri_idx]
+            pt = v0[tri_idx]
+            d = np.dot(norm, pt)
+            self.face_planes[orig_face_idx] = (norm, d)
 
         # Track original faces adjacent to each vertex
         self.vertex_to_original_faces = {v_idx: set() for v_idx in range(len(verts))}
@@ -588,8 +602,35 @@ class ModelViewer:
             all_edges_set.update(edges)
         self.all_edges = list(all_edges_set)
 
-        # Store scaled verts and sphere mesh local data
+        # Precompute face types based on shape signature
         self.verts = verts
+        self.face_types = defaultdict(list)
+        for orig_face_idx in range(self.num_original_faces):
+            # Calculate edge lengths from boundary edges
+            edge_lengths = []
+            for u, v in self.face_boundary_edges[orig_face_idx]:
+                edge_lengths.append(np.linalg.norm(self.verts[u] - self.verts[v]))
+            sorted_lens = tuple(round(float(l), 4) for l in sorted(edge_lengths))
+            
+            # Calculate area of the original face by summing tri areas
+            area = 0.0
+            for tri in face_triangles[orig_face_idx]:
+                p0 = self.verts[tri[0]]
+                p1 = self.verts[tri[1]]
+                p2 = self.verts[tri[2]]
+                area += 0.5 * np.linalg.norm(np.cross(p1 - p0, p2 - p0))
+            rounded_area = round(float(area), 4)
+            
+            gonality = len(self.face_boundary_edges[orig_face_idx])
+            shape_key = (gonality, sorted_lens, rounded_area)
+            self.face_types[shape_key].append(orig_face_idx)
+            
+        self.face_type_keys = list(self.face_types.keys())
+        
+        # Select the first face of each face type as its representative
+        self.representative_faces = [self.face_types[key][0] for key in self.face_type_keys]
+
+        # Store scaled verts and sphere mesh local data
         self.sphere_local_verts, self.sphere_faces = create_sphere_mesh(radius=0.015, rings=8, sectors=8)
 
     def rotate_camera(self, dx, dy):
@@ -675,7 +716,32 @@ class ModelViewer:
         self.program['u_proj'].write(proj.tobytes())
         self.program['u_view'].write(view.tobytes())
         
+        # Set alpha override back to default solid state
+        if 'u_alpha_override' in self.program:
+            self.program['u_alpha_override'].value = -1.0
+        
         if active_face_index != -1 and active_face_index in self.face_ranges:
+            # Render coplanar faces as translucent
+            active_plane = self.face_planes[active_face_index]
+            coplanar_indices = []
+            for f_idx, plane in self.face_planes.items():
+                if f_idx != active_face_index:
+                    n1, d1 = active_plane
+                    n2, d2 = plane
+                    if abs(abs(np.dot(n1, n2)) - 1.0) < 1e-4:
+                        if abs(d1 - d2 * np.sign(np.dot(n1, n2))) < 1e-4:
+                            coplanar_indices.append(f_idx)
+            
+            if coplanar_indices:
+                self.program['u_alpha_override'].value = ALPHA
+                self.ctx.depth_write = False
+                for f_idx in coplanar_indices:
+                    start_v, count_v = self.face_ranges[f_idx]
+                    self.vao.render(moderngl.TRIANGLES, vertices=count_v, first=start_v)
+                self.ctx.depth_write = True
+            
+            # Render focus face solid
+            self.program['u_alpha_override'].value = -1.0
             start_v, count_v = self.face_ranges[active_face_index]
             self.vao.render(moderngl.TRIANGLES, vertices=count_v, first=start_v)
         elif active_vertex_index != -1 and active_vertex_index in self.vertex_to_original_faces:
@@ -731,7 +797,7 @@ def run_bg_analysis(folder, viewers_list):
             if bg_run_id[0] != my_run_id:
                 return
             fpath = os.path.abspath(v.filepath)
-            res, stats = verify_off_logic(fpath, return_stats=True, run_symmetry=False)
+            res, stats = verify_off_logic(fpath, return_stats=True, run_symmetry=RUN_SYMMETRY_CALCULATION)
             if stats is not None:
                 results.append(stats)
                 all_keys.update(stats.keys())
@@ -803,7 +869,7 @@ def run_single_analysis(filepath, state):
             spec.loader.exec_module(offcheck)
             verify_off_logic = offcheck.verify_off_logic
             
-            report = verify_off_logic(os.path.abspath(filepath), run_symmetry=False)
+            report = verify_off_logic(os.path.abspath(filepath), run_symmetry=RUN_SYMMETRY_CALCULATION)
             state['active_report'] = report
             state['needs_redraw'] = 2
         except Exception as e:
@@ -838,6 +904,22 @@ def get_subfolders(folder):
         print(f"Error listing subfolders: {e}")
     return subfolders_list
 
+def apply_search_and_sort(state, viewers):
+    all_v = state.get('all_viewers', [])
+    query = state.get('search_query', '').strip()
+    if query:
+        filtered = []
+        for v in all_v:
+            if fnmatch.fnmatch(v.filename.lower(), query.lower()):
+                filtered.append(v)
+            elif fnmatch.fnmatch(os.path.splitext(v.filename)[0].lower(), query.lower()):
+                filtered.append(v)
+        viewers[:] = filtered
+    else:
+        viewers[:] = list(all_v)
+        
+    selected_metric = state.get('selected_sort_metric', 'Default')
+    sort_viewers_by_metric(selected_metric, viewers)
 
 def sort_viewers_by_metric(metric, viewers):
     if metric == "Default":
@@ -904,6 +986,7 @@ def init_gl_resources(ctx):
     in vec4 v_color;
     in vec3 v_normal;
     out vec4 fragColor;
+    uniform float u_alpha_override;
     void main() {
         vec3 normal = normalize(v_normal);
         if (!gl_FrontFacing) {
@@ -919,7 +1002,8 @@ def init_gl_resources(ctx):
         
         float ambient = 0.35;
         vec3 final_light = v_color.rgb * (diff1 + diff2 + diff3 + ambient);
-        fragColor = vec4(final_light, v_color.a);
+        float alpha = (u_alpha_override >= 0.0) ? u_alpha_override : v_color.a;
+        fragColor = vec4(final_light, alpha);
     }
     """
     
@@ -990,6 +1074,8 @@ def show_bespoke_text_window(filepath):
     t = threading.Thread(target=run, daemon=True)
     t.start()
 
+# Version 5.22
+
 def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
     import subprocess
     mx, my = pygame.mouse.get_pos()
@@ -1011,12 +1097,15 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                 state['current_folder'] = os.path.abspath(dropped_path)
             else:
                 state['current_folder'] = os.path.abspath(os.path.dirname(dropped_path))
-            viewers[:] = load_viewers_from_folder(state['current_folder'], ctx, prog_3d)
+            state['all_viewers'] = load_viewers_from_folder(state['current_folder'], ctx, prog_3d)
+            state['search_query'] = ""
+            apply_search_and_sort(state, viewers)
             subfolders[:] = get_subfolders(state['current_folder'])
             state['scroll_y'] = 0.0
             state['hovered_index'] = -1
             state['fullscreen_index'] = -1
             state['active_face_index'] = -1
+            state['active_rep_idx'] = -1
             state['active_vertex_index'] = -1
             state['active_report'] = None
             
@@ -1028,11 +1117,12 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
             bg_csv_ready[0] = False
             bg_csv_path[0] = None
             state['context_menu_open'] = False
-            run_bg_analysis(state['current_folder'], viewers)
+            run_bg_analysis(state['current_folder'], state['all_viewers'])
             state['needs_redraw'] = 2
         elif event.type == MOUSEBUTTONDOWN:
             event_handled = False
             win_w, win_h = pygame.display.get_window_size()
+            grid_w = win_w - sidebar_w
             
             if event.button == 4:
                 if state['dropdown_open'] and pygame.Rect(15, 102, 170, min(350, win_h - 120)).collidepoint(mx, my):
@@ -1065,6 +1155,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                         relative_y = my - cy
                         
                         root_temp = tk.Tk()
+                        root_temp.option_add("*Entry.width", 60)
                         root_temp.withdraw()
                         
                         if relative_y < 20: # Rename option
@@ -1079,7 +1170,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                     os.rename(old_path, new_path)
                                     viewers[state['context_menu_index']].filepath = new_path
                                     viewers[state['context_menu_index']].filename = new_name
-                                    run_bg_analysis(state['current_folder'], viewers)
+                                    run_bg_analysis(state['current_folder'], state['all_viewers'])
                                 except Exception as e:
                                     messagebox.showerror("Error", f"Could not rename file: {e}")
                         elif relative_y < 40: # Delete option
@@ -1089,7 +1180,9 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                 try:
                                     os.remove(target_v.filepath)
                                     viewers.pop(state['context_menu_index'])
-                                    run_bg_analysis(state['current_folder'], viewers)
+                                    if target_v in state['all_viewers']:
+                                        state['all_viewers'].remove(target_v)
+                                    run_bg_analysis(state['current_folder'], state['all_viewers'])
                                 except Exception as e:
                                     messagebox.showerror("Error", f"Could not delete file: {e}")
                         elif relative_y < 60: # Open in Stella option
@@ -1107,6 +1200,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                             target_v = viewers[state['context_menu_index']]
                             show_bespoke_text_window(target_v.filepath)
                                     
+                        root_temp.update()
                         root_temp.destroy()
                         state['context_menu_open'] = False
                         event_handled = True
@@ -1123,6 +1217,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                         new_idx = (state['fullscreen_index'] - 1) % len(viewers)
                         state['fullscreen_index'] = new_idx
                         state['active_face_index'] = -1
+                        state['active_rep_idx'] = -1
                         state['active_vertex_index'] = -1
                         v = viewers[new_idx]
                         state['target_file'] = v.filename
@@ -1133,6 +1228,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                         new_idx = (state['fullscreen_index'] + 1) % len(viewers)
                         state['fullscreen_index'] = new_idx
                         state['active_face_index'] = -1
+                        state['active_rep_idx'] = -1
                         state['active_vertex_index'] = -1
                         v = viewers[new_idx]
                         state['target_file'] = v.filename
@@ -1142,6 +1238,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     elif grid_btn_rect.collidepoint(mx, my):
                         state['fullscreen_index'] = -1
                         state['active_face_index'] = -1
+                        state['active_rep_idx'] = -1
                         state['active_vertex_index'] = -1
                         state['active_report'] = None
                         state['needs_redraw'] = 2
@@ -1188,7 +1285,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                 else:
                                     try:
                                         f1 = float(val1)
-                                        f2 = float(val2)
+                                        f2 = float(prev_v.metrics.get(selected_metric, ""))
                                         if abs(f1 - f2) < SORT_TOLERANCE * abs(f2):
                                             is_equal = True
                                     except (ValueError, TypeError):
@@ -1224,11 +1321,13 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                         os.remove(v.filepath)
                                     if v in viewers:
                                         viewers.remove(v)
+                                    if v in state['all_viewers']:
+                                        state['all_viewers'].remove(v)
                                     deleted_count += 1
                                 except Exception as e:
                                     print(f"Error deleting duplicate {v.filename}: {e}")
                             
-                            run_bg_analysis(state['current_folder'], viewers)
+                            run_bg_analysis(state['current_folder'], state['all_viewers'])
                             state['needs_redraw'] = 2
                             
                             root_temp = tk.Tk()
@@ -1236,6 +1335,63 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                             messagebox.showinfo("Delete Duplicates", f"Deleted {deleted_count} duplicate files. Kept the oldest from each set.")
                             root_temp.destroy()
                     event_handled = True
+
+                # Check Interactive Search Button Click
+                if not event_handled and state['fullscreen_index'] == -1:
+                    search_btn_rect = pygame.Rect(win_w - 115, 30, 100, 30)
+                    if search_btn_rect.collidepoint(mx, my):
+                        root_temp = tk.Tk()
+                        root_temp.option_add("*Entry.width", 60)
+                        root_temp.withdraw()
+                        query = simpledialog.askstring("Search Files", "Enter search pattern (? and * wildcards allowed):", initialvalue=state.get('search_query', ''))
+                        if query is not None:
+                            state['search_query'] = query
+                            apply_search_and_sort(state, viewers)
+                            state['scroll_y'] = 0.0
+                            state['hovered_index'] = -1
+                            state['fullscreen_index'] = -1
+                        root_temp.update()
+                        root_temp.destroy()
+                        event_handled = True
+
+                # Check Editable Folder Address Box Click
+                if not event_handled and state['fullscreen_index'] == -1:
+                    addr_box_rect = pygame.Rect(sidebar_w + 15, 30, grid_w - 150, 30)
+                    if addr_box_rect.collidepoint(mx, my):
+                        root_temp = tk.Tk()
+                        root_temp.option_add("*Entry.width", 80)
+                        root_temp.withdraw()
+                        new_folder = simpledialog.askstring("Edit Folder Path", "Enter new folder path:", initialvalue=state['current_folder'])
+                        if new_folder:
+                            new_folder_abs = os.path.abspath(new_folder)
+                            if os.path.isdir(new_folder_abs):
+                                state['current_folder'] = new_folder_abs
+                                state['all_viewers'] = load_viewers_from_folder(state['current_folder'], ctx, prog_3d)
+                                state['search_query'] = ""
+                                apply_search_and_sort(state, viewers)
+                                subfolders[:] = get_subfolders(state['current_folder'])
+                                state['scroll_y'] = 0.0
+                                state['hovered_index'] = -1
+                                state['fullscreen_index'] = -1
+                                state['active_face_index'] = -1
+                                state['active_rep_idx'] = -1
+                                state['active_vertex_index'] = -1
+                                state['active_report'] = None
+                                
+                                state['sort_dropdown_enabled'] = False
+                                state['selected_sort_metric'] = "Default"
+                                state['sort_headers'] = []
+                                state['dropdown_open'] = False
+                                state['dropdown_scroll'] = 0
+                                bg_csv_ready[0] = False
+                                bg_csv_path[0] = None
+                                state['context_menu_open'] = False
+                                run_bg_analysis(state['current_folder'], state['all_viewers'])
+                            else:
+                                messagebox.showerror("Error", f"Directory does not exist:\n{new_folder_abs}")
+                        root_temp.update()
+                        root_temp.destroy()
+                        event_handled = True
                 
                 if not event_handled:
                     on_scrollbar_track = (mx >= win_w - 12)
@@ -1263,12 +1419,15 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                 state['current_folder'] = os.path.abspath(os.path.dirname(state['current_folder']))
                             else:
                                 state['current_folder'] = os.path.abspath(os.path.join(state['current_folder'], target))
-                            viewers[:] = load_viewers_from_folder(state['current_folder'], ctx, prog_3d)
+                            state['all_viewers'] = load_viewers_from_folder(state['current_folder'], ctx, prog_3d)
+                            state['search_query'] = ""
+                            apply_search_and_sort(state, viewers)
                             subfolders[:] = get_subfolders(state['current_folder'])
                             state['scroll_y'] = 0.0
                             state['hovered_index'] = -1
                             state['fullscreen_index'] = -1
                             state['active_face_index'] = -1
+                            state['active_rep_idx'] = -1
                             state['active_vertex_index'] = -1
                             state['active_report'] = None
                             
@@ -1280,7 +1439,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                             bg_csv_ready[0] = False
                             bg_csv_path[0] = None
                             state['context_menu_open'] = False
-                            run_bg_analysis(state['current_folder'], viewers)
+                            run_bg_analysis(state['current_folder'], state['all_viewers'])
                     else:
                         current_time = pygame.time.get_ticks()
                         time_diff = current_time - state['last_click_time']
@@ -1290,6 +1449,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                             if state['fullscreen_index'] != -1:
                                 state['fullscreen_index'] = -1
                                 state['active_face_index'] = -1
+                                state['active_rep_idx'] = -1
                                 state['active_vertex_index'] = -1
                                 state['active_report'] = None
                             elif state['hovered_index'] != -1:
@@ -1331,16 +1491,21 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                 if state['fullscreen_index'] != -1:
                     state['fullscreen_index'] = -1
                     state['active_face_index'] = -1
+                    state['active_rep_idx'] = -1
                     state['active_vertex_index'] = -1
                     state['active_report'] = None
                     state['needs_redraw'] = 2
             elif event.key == K_f:
                 if state['fullscreen_index'] != -1 and 0 <= state['fullscreen_index'] < len(viewers):
                     v = viewers[state['fullscreen_index']]
-                    num_faces = v.num_original_faces
-                    if num_faces > 0:
+                    num_reps = len(v.representative_faces)
+                    if num_reps > 0:
                         state['active_vertex_index'] = -1
-                        state['active_face_index'] = (state['active_face_index'] + 2) % (num_faces + 1) - 1
+                        state['active_rep_idx'] = (state.get('active_rep_idx', -1) + 2) % (num_reps + 1) - 1
+                        if state['active_rep_idx'] != -1:
+                            state['active_face_index'] = v.representative_faces[state['active_rep_idx']]
+                        else:
+                            state['active_face_index'] = -1
                         state['needs_redraw'] = 2
             elif event.key == K_v:
                 if state['fullscreen_index'] != -1 and 0 <= state['fullscreen_index'] < len(viewers):
@@ -1348,6 +1513,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     num_verts = v.num_vertices
                     if num_verts > 0:
                         state['active_face_index'] = -1
+                        state['active_rep_idx'] = -1
                         state['active_vertex_index'] = (state['active_vertex_index'] + 2) % (num_verts + 1) - 1
                         state['needs_redraw'] = 2
             elif event.key == K_e:
@@ -1357,9 +1523,14 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     else:
                         state['edge_mode'] = 2 if state['edge_mode'] == 0 else 0
                     state['needs_redraw'] = 2
+                else:
+                    # Toggle edge display for Grid view independently
+                    state['grid_edges_on'] = not state.get('grid_edges_on', False)
+                    state['needs_redraw'] = 2
             elif event.key == K_x:
                 if state['fullscreen_index'] != -1:
                     state['active_face_index'] = -1
+                    state['active_rep_idx'] = -1
                     state['active_vertex_index'] = -1
                     state['needs_redraw'] = 2
             elif event.key in (K_PLUS, K_EQUALS, K_KP_PLUS):
@@ -1368,8 +1539,6 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
             elif event.key in (K_MINUS, K_KP_MINUS):
                 state['item_w'] = max(80, state.get('item_w', 180) - 20)
                 state['needs_redraw'] = 2
-
-
 def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, mx, my, off_files_count):
     sidebar_w = 200
     top_bar_h = 75
@@ -1435,8 +1604,15 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
                 ui_surf.blit(lbl, (label_x, win_h - 38))
                 
             active_face = state.get('active_face_index', -1)
+            active_rep_idx = state.get('active_rep_idx', -1)
             if active_face != -1:
-                face_lbl = font_bold.render(f"Displaying Original Face {active_face + 1} / {v.num_original_faces}", True, (255, 50, 50))
+                shape_name = "Custom Face"
+                for shape_key, faces_list in v.face_types.items():
+                    if active_face in faces_list:
+                        gonality = shape_key[0]
+                        shape_name = f"{gonality}-sided Face Shape"
+                        break
+                face_lbl = font_bold.render(f"Displaying Representative {shape_name} (Face {active_face + 1})", True, (255, 50, 50))
                 ui_surf.blit(face_lbl, (label_x, top_bar_h + 30))
                 
             active_vertex = state.get('active_vertex_index', -1)
@@ -1596,15 +1772,23 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
         ui_surf.blit(txt, (20, sy))
         sy += 25
         
-    pygame.draw.rect(ui_surf, (255, 255, 255), (sidebar_w + 15, 30, grid_w - 120, 30))
-    pygame.draw.rect(ui_surf, (200, 200, 200), (sidebar_w + 15, 30, grid_w - 120, 30), 1)
+    # Address bar
+    pygame.draw.rect(ui_surf, (255, 255, 255), (sidebar_w + 15, 30, grid_w - 150, 30))
+    pygame.draw.rect(ui_surf, (200, 200, 200), (sidebar_w + 15, 30, grid_w - 150, 30), 1)
     addr_txt = font.render(f"  {state['current_folder']}", True, (80, 80, 80))
     ui_surf.blit(addr_txt, (sidebar_w + 20, 36))
     
-    pygame.draw.rect(ui_surf, (255, 255, 255), (win_w - 90, 30, 75, 30))
-    pygame.draw.rect(ui_surf, (200, 200, 200), (win_w - 90, 30, 75, 30), 1)
-    search_txt = font.render("Search", True, (150, 150, 150))
-    ui_surf.blit(search_txt, (win_w - 80, 36))
+    # Search button
+    search_rect = pygame.Rect(win_w - 115, 30, 100, 30)
+    pygame.draw.rect(ui_surf, (255, 255, 255), search_rect)
+    pygame.draw.rect(ui_surf, (200, 200, 200), search_rect, 1)
+    
+    display_search = state.get('search_query', '')
+    if not display_search:
+        search_txt = font.render("Search", True, (150, 150, 150))
+    else:
+        search_txt = font.render(display_search, True, (0, 102, 204))
+    ui_surf.blit(search_txt, (win_w - 105, 36))
     
     if state['fullscreen_index'] == -1 and state['max_scroll'] > 0:
         bar_h = max(30, int((grid_h / (state['max_scroll'] + grid_h)) * grid_h))
@@ -1663,13 +1847,15 @@ def draw_ui_surface(win_w, win_h, state, viewers, subfolders, font, font_bold, m
         
     return ui_surf
 
+# Version 5.23
+
 def main():
     import subprocess
     
     pygame.init()
     pygame.font.init()
     
-    win_w, win_h = 1300, 750
+    win_w, win_h = 1300, 850
     
     try:
         screen_w, screen_h = 1920, 1080  # Default fallback
@@ -1694,8 +1880,26 @@ def main():
     
     ctx = moderngl.create_context()
     ctx.enable(moderngl.DEPTH_TEST)
+    ctx.depth_func = '<='  # Set depth function to Less-Than-or-Equal to eliminate coplanar Z-fighting
     ctx.enable(moderngl.BLEND)
     ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+    
+    # Enable polygon offset to push filled faces slightly back in depth relative to wireframe edges
+    try:
+        import ctypes
+        if sys.platform == 'win32':
+            ctypes.windll.opengl32.glEnable(32823)  # GL_POLYGON_OFFSET_FILL (0x8037)
+        else:
+            for name in ['libGL.so.1', 'libGL.so', '/System/Library/Frameworks/OpenGL.framework/OpenGL']:
+                try:
+                    ctypes.CDLL(name).glEnable(32823)
+                    break
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    
+    ctx.polygon_offset = (1.0, 1.0)
     
     prog_3d, prog_2d, quad_vao = init_gl_resources(ctx)
     
@@ -1723,8 +1927,10 @@ def main():
         'target_file': target_file,
         'fullscreen_index': fullscreen_index,
         'active_face_index': -1,
+        'active_rep_idx': -1,
         'active_vertex_index': -1,
         'edge_mode': 0,
+        'grid_edges_on': False,
         'active_report': None,
         'scroll_y': 0.0,
         'max_scroll': 0,
@@ -1746,7 +1952,9 @@ def main():
         'context_menu_pos': (0, 0),
         'needs_redraw': 2,
         'checker_proc': None,
-        'item_w': 180
+        'item_w': 180,
+        'all_viewers': list(viewers),
+        'search_query': ""
     }
     
     if target_file:
@@ -1763,7 +1971,7 @@ def main():
     text_area_h = 45
     
     clock = pygame.time.Clock()
-    run_bg_analysis(state['current_folder'], viewers)
+    run_bg_analysis(state['current_folder'], state['all_viewers'])
     
     while state['running']:
         dt = clock.tick(60)
@@ -1815,8 +2023,9 @@ def main():
                         if reader.fieldnames:
                             state['sort_headers'] = [h for h in reader.fieldnames if h not in ("Filename", "Detail")]
                             metrics_map = {row["Filename"]: row for row in rows}
-                            for v in viewers:
+                            for v in state['all_viewers']:
                                 v.metrics = metrics_map.get(v.filename, {})
+                            apply_search_and_sort(state, viewers)
                             state['sort_dropdown_enabled'] = True
                             state['needs_redraw'] = 2
             except Exception as e:
@@ -1909,7 +2118,8 @@ def main():
                     clamped_h = clamped_top - clamped_bottom
                     if clamped_h > 0:
                         ctx.scissor = (int((x + 1) * sx), int(clamped_bottom * sy), int((item_w - 2) * sx), int(clamped_h * sy))
-                        v.render_3d((int((x + 1) * sx), int(v_y_bottom * sy), int((item_w - 2) * sx), int(item_w * sy)), sx / sy, edge_mode=state.get('edge_mode', 0))
+                        grid_edge_mode = 2 if state.get('grid_edges_on', False) else 0
+                        v.render_3d((int((x + 1) * sx), int(v_y_bottom * sy), int((item_w - 2) * sx), int(item_w * sy)), sx / sy, edge_mode=grid_edge_mode)
                         
             ctx.scissor = None
             ctx.viewport = (0, 0, int(fb_w), int(fb_h))

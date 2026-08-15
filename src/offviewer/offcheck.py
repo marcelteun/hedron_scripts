@@ -1,20 +1,29 @@
 # File: offcheck.py
-# Version: 4.4
-# Addons required: pip install windnd numpy
+# Version: 4.6
+# Addons required: pip install numpy (and windnd for Windows drag-and-drop)
 
-import sys
-import os
-import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext
-from collections import defaultdict
-import math
-import windnd 
-import ctypes
 import csv
-import importlib.util
-import re
+import ctypes
 import heapq
+import math
+import os
+import re
+import sys
+from collections import defaultdict
+
+import tkinter as tk
+from tkinter import filedialog, scrolledtext
+
 import numpy as np
+
+import facetings_math
+
+# Conditionally import windnd based on OS
+if sys.platform == "win32":
+    import windnd
+else:
+    windnd = None
+
 
 def calculate_face_normal_and_area(coords):
     """Calculates the area and the Newell normal of a 3D polygon, handling self-intersections for absolute area."""
@@ -82,6 +91,7 @@ def calculate_face_normal_and_area(coords):
     abs_area = compute_absolute_area_2d(p2d_proj)
     return normal, abs_area
 
+
 def get_convex_hull_normal(coords):
     """Computes a stable plane normal by finding the 2D convex hull of projected 3D coordinates."""
     if len(coords) < 3:
@@ -91,7 +101,7 @@ def get_convex_hull_normal(coords):
     centroid = np.mean(pts, axis=0)
     pts_centered = pts - centroid
     cov = np.dot(pts_centered.T, pts_centered)
-    eigenvalues, eigenvectors = np.linalg.eigh(cov)
+    _, eigenvectors = np.linalg.eigh(cov)
     normal_pca = eigenvectors[:, 0]
     norm = np.linalg.norm(normal_pca)
     if norm > 1e-12:
@@ -143,6 +153,7 @@ def get_convex_hull_normal(coords):
     hull_normal, _ = calculate_face_normal_and_area(hull_coords)
     return hull_normal
 
+
 def is_concave_face(coords, face_normal):
     """Checks if a face is non-convex."""
     if len(coords) < 4:
@@ -164,6 +175,7 @@ def is_concave_face(coords, face_normal):
         if dot < -1e-12: 
             return True
     return False
+
 
 def is_crossed_face(coords, normal):
     """Checks if a face is self-intersecting (crossed) by projecting to 2D."""
@@ -200,6 +212,7 @@ def is_crossed_face(coords, normal):
                 return True
     return False
 
+
 def check_planarity(coords, normal, tolerance=1e-6):
     """Checks if all vertices of a face lie on the same plane."""
     if len(coords) <= 3:
@@ -210,9 +223,10 @@ def check_planarity(coords, normal, tolerance=1e-6):
     for i in range(1, len(coords)):
         vec = (coords[i][0] - v0[0], coords[i][1] - v0[1], coords[i][2] - v0[2])
         dist = abs(vec[0]*normal[0] + vec[1]*normal[1] + vec[2]*normal[2])
-        max_dist = max_dist if max_dist > dist else dist
+        max_dist = max(dist, max_dist)
         
     return max_dist > tolerance, max_dist
+
 
 def find_closest_vertex_distance(unique_vertices, initial_estimate):
     """Calculates the absolute closest distance between any two distinct vertices."""
@@ -235,13 +249,13 @@ def find_closest_vertex_distance(unique_vertices, initial_estimate):
                 d_min = dist
     return d_min
 
+
 def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     """The core consistency checking logic."""
-    one_vertex_faces_detected = False
     try:
         with open(filepath, 'r') as f:
             lines = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         err = f"Error opening file: {e}"
         return (err, None) if return_stats else err
 
@@ -256,7 +270,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     try:
         counts = list(map(int, count_line.split()))
         num_vertices, num_faces = counts[0], counts[1]
-    except:
+    except (ValueError, IndexError):
         err = "Error: Could not parse vertex/face counts from header."
         return (err, None) if return_stats else err
 
@@ -434,12 +448,12 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     # Gonality: Populated if all faces have the same gonality
     gonality = ""
     if len(face_type_counts) == 1:
-        gonality = list(face_type_counts.keys())[0]
+        gonality = next(iter(face_type_counts))
 
     # Valence: Populated only if all vertices of input polyhedron have the same valence
     shared_valence = ""
     if len(valence_distribution) == 1 and num_vertices > 0:
-        shared_valence = list(valence_distribution.keys())[0]
+        shared_valence = next(iter(valence_distribution))
 
     # --- 3a. Geometric Path Metrics & Weighted Wiener Index scaled to R = 1 ---
     # Find Centroid and Circumradius
@@ -454,8 +468,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         max_r_sq = 0.0
         for v in vertices:
             r_sq = (v[0] - cx)**2 + (v[1] - cy)**2 + (v[2] - cz)**2
-            if r_sq > max_r_sq:
-                max_r_sq = r_sq
+            max_r_sq = max(max_r_sq, r_sq)
         circumradius = math.sqrt(max_r_sq) if max_r_sq > 0 else 1.0
     else:
         circumradius = 1.0
@@ -501,66 +514,29 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     else:
         wiener_index = float('nan')
 
-    # --- 4. Symmetry Group and Order ---
+    # --- 4. Symmetry Group and Order (Calling facetings_math) ---
     symmetry_order = ""
     symmetry_symbol = ""
     if run_symmetry:
         symmetry_order = "N/A"
         symmetry_symbol = "N/A"
         try:
-            script_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
-            sym_path = os.path.join(script_dir, "offcheck-symmetry.py")
-            if not os.path.exists(sym_path):
-                sym_path = os.path.abspath("offcheck-symmetry.py")
-                
-            if os.path.exists(sym_path):
-                spec = importlib.util.spec_from_file_location("offcheck_symmetry", sym_path)
-                offcheck_symmetry = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(offcheck_symmetry)
-                
-                if one_vertex_faces_detected:
-                    temp_filepath = filepath + ".symtemp.off"
-                    with open(temp_filepath, 'w') as temp_f:
-                        temp_f.write("OFF\n")
-                        temp_f.write(f"{num_vertices} {len(parsed_faces)} 0\n")
-                        for v in vertices:
-                            temp_f.write(f"{v[0]} {v[1]} {v[2]}\n")
-                        for face in parsed_faces:
-                            temp_f.write(f"{len(face)} " + " ".join(map(str, face)) + "\n")
-                    target_filepath = temp_filepath
-                else:
-                    target_filepath = filepath
-                    
-                try:
-                    sym_report = offcheck_symmetry.analyze_symmetry(target_filepath)
-                    if sym_report.startswith("Error"):
-                        symmetry_order = "Error"
-                        symmetry_symbol = sym_report
-                    else:
-                        for line in sym_report.splitlines():
-                            if "TOTAL SYMMETRY GROUP ORDER:" in line:
-                                symmetry_order = int(line.split()[-1])
-                            elif "SCHOENFLIES SYMBOL:" in line:
-                                symmetry_symbol = line.split()[-1]
-                except Exception as inner_e:
-                    import traceback
-                    symmetry_order = "Error in analysis"
-                    symmetry_symbol = str(inner_e)
-                    print(traceback.format_exc(), file=sys.stderr)
-                finally:
-                    if one_vertex_faces_detected and os.path.exists(temp_filepath):
-                        try:
-                            os.remove(temp_filepath)
-                        except Exception:
-                            pass
+            verts_np = np.array(vertices, dtype=np.float64)
+            symmetries = facetings_math.get_symmetry_group(verts_np)
+            symmetry_order = len(symmetries)
+            
+            # Classify using the indices of the full group
+            full_group_indices = list(range(symmetry_order))
+            classification = facetings_math.classify_subgroup(full_group_indices, symmetries)
+            
+            # Extract the Schoenflies symbol from the parsed classification name (inside parentheses)
+            if "(" in classification:
+                symmetry_symbol = classification.split("(")[-1].rstrip(")")
             else:
-                symmetry_order = "Missing helper file"
-                symmetry_symbol = "N/A"
-        except Exception as e:
-            import traceback
-            symmetry_order = "Load Error"
-            symmetry_symbol = str(e)
-            print(traceback.format_exc(), file=sys.stderr)
+                symmetry_symbol = classification
+        except (ValueError, TypeError, IndexError, AttributeError) as e:
+            symmetry_order = "Error"
+            symmetry_symbol = f"Error in analysis: {e}"
 
     def format_metric(val):
         if val == float('inf') or val == 0 or math.isnan(val): return "N/A"
@@ -690,7 +666,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
 
 
 class OFFCheckerGUI:
-# Version: 4.5
+    # Version: 4.6
 
     def __init__(self, root):
         self.root = root
@@ -728,7 +704,8 @@ class OFFCheckerGUI:
         self.text_area = scrolledtext.ScrolledText(root, width=68, height=1, font=("Consolas", 10))
         self.text_area.pack(pady=10, padx=10, expand=True, fill=tk.BOTH)
 
-        windnd.hook_dropfiles(self.root, func=self.handle_drop)
+        if sys.platform == "win32" and windnd:
+            windnd.hook_dropfiles(self.root, func=self.handle_drop)
 
         # 5. Display the fully realized layout
         self.root.deiconify()
@@ -745,32 +722,40 @@ class OFFCheckerGUI:
             # Standard Tkinter approach
             self.root.iconbitmap(icon_path)
             
-            # Heavy-duty Win32 API override via ctypes
-            hwnd = self.root.winfo_id()
-            user32 = ctypes.windll.user32
-            
-            # Load icon (LR_LOADFROMFILE = 0x10, IMAGE_ICON = 1)
-            hicon = user32.LoadImageW(0, icon_path, 1, 0, 0, 0x00000010)
-            
-            if hicon:
-                # Set icon for current window (WM_SETICON = 0x80)
-                user32.SendMessageW(hwnd, 0x0080, 0, hicon) # ICON_SMALL
-                user32.SendMessageW(hwnd, 0x0080, 1, hicon) # ICON_BIG
+            if sys.platform == "win32":
+                # Heavy-duty Win32 API override via ctypes
+                hwnd = self.root.winfo_id()
+                user32 = ctypes.windll.user32
                 
-                # Set icon for the Window Class (more persistent)
-                # GCLP_HICON = -14, GCLP_HICONSM = -34
-                if ctypes.sizeof(ctypes.c_void_p) == 8: # 64-bit
-                    user32.SetClassLongPtrW(hwnd, -14, hicon)
-                    user32.SetClassLongPtrW(hwnd, -34, hicon)
-                else: # 32-bit
-                    user32.SetClassLongW(hwnd, -14, hicon)
-                    user32.SetClassLongW(hwnd, -34, hicon)
-        except Exception:
+                # Load icon (LR_LOADFROMFILE = 0x10, IMAGE_ICON = 1)
+                hicon = user32.LoadImageW(0, icon_path, 1, 0, 0, 0x00000010)
+                
+                if hicon:
+                    # Set icon for current window (WM_SETICON = 0x80)
+                    user32.SendMessageW(hwnd, 0x0080, 0, hicon) # ICON_SMALL
+                    user32.SendMessageW(hwnd, 0x0080, 1, hicon) # ICON_BIG
+                    
+                    # Set icon for the Window Class (more persistent)
+                    # GCLP_HICON = -14, GCLP_HICONSM = -34
+                    if ctypes.sizeof(ctypes.c_void_p) == 8: # 64-bit
+                        user32.SetClassLongPtrW(hwnd, -14, hicon)
+                        user32.SetClassLongPtrW(hwnd, -34, hicon)
+                    else: # 32-bit
+                        user32.SetClassLongW(hwnd, -14, hicon)
+                        user32.SetClassLongW(hwnd, -34, hicon)
+        except (AttributeError, tk.TclError, OSError):
             pass
 
     def handle_drop(self, files):
         if files:
-            filepath = files[0].decode('gbk') 
+            raw_file = files[0]
+            if isinstance(raw_file, bytes):
+                try:
+                    filepath = raw_file.decode('utf-8')
+                except UnicodeDecodeError:
+                    filepath = raw_file.decode('gbk')
+            else:
+                filepath = str(raw_file)
             self.process_file(filepath)
 
     def browse_file(self):
@@ -814,7 +799,7 @@ class OFFCheckerGUI:
                     stats["Filename"] = os.path.basename(fpath)
                     stats["Detail"] = res
                 else:
-                    for k in stats.keys():
+                    for k in stats:
                         if k.startswith("Faces ("):
                             dynamic_face_keys.add(k)
                         elif k.startswith("Valence ("):
@@ -826,8 +811,8 @@ class OFFCheckerGUI:
                 m = re.search(r'\d+', key_str)
                 return int(m.group()) if m else 999999
 
-            sorted_face_headers = sorted(list(dynamic_face_keys), key=extract_num)
-            sorted_valence_headers = sorted(list(dynamic_valence_keys), key=extract_num)
+            sorted_face_headers = sorted(dynamic_face_keys, key=extract_num)
+            sorted_valence_headers = sorted(dynamic_valence_keys, key=extract_num)
             
             headers = base_headers + sorted_face_headers + sorted_valence_headers
 
@@ -840,7 +825,7 @@ class OFFCheckerGUI:
                         writer.writerow(row_data)
                 
                 summary = [
-                    f"BATCH MODE COMPLETE",
+                    "BATCH MODE COMPLETE",
                     f"Folder: {folder}",
                     f"Processed {success_count} .off files.",
                     f"Results written to: {csv_path}",
@@ -850,13 +835,14 @@ class OFFCheckerGUI:
                     summary.append(f"{row['Filename']:<30} | {row['Detail']}")
                 self.text_area.insert(tk.END, "\n".join(summary))
                 self.text_area.configure(height=min(len(summary) + 1, 30))
-            except Exception as e:
+            except (OSError, KeyError) as e:
                 self.text_area.insert(tk.END, f"Error writing CSV file: {e}")
         else:
             result = verify_off_logic(filepath, run_symmetry=sym_enabled)
             self.text_area.insert(tk.END, result)
             line_count = result.count('\n') + 1
             self.text_area.configure(height=line_count)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
