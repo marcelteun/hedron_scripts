@@ -1,6 +1,6 @@
 [project]
 name = "offviewer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -11,13 +11,17 @@ dependencies = [
     "moderngl>=5.12.0",
     "numba>=0.67.0",
     "numpy>=2.5.2",
+    "pillow>=12.3.0",
     "pygame>=2.6.1",
+    "scipy>=1.18.0",
+    "tkinterdnd2>=0.6.2",
     "windnd>=1.0.7",
 ]
 
 [project.scripts]
-offviewer = "offviewer:main"
+facetings = "offviewer.facetings:main"
 offchecker = "offviewer.offcheck:main"
+offviewer = "offviewer:main"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]

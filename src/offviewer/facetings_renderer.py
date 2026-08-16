@@ -20,7 +20,7 @@ try:
 except ImportError:
     HAS_PIL = False
 
-from facetings_math import perspective_matrix, rotation_matrix, COLOR_MAP, DEFAULT_COLOR
+from offviewer.facetings_math import perspective_matrix, rotation_matrix, COLOR_MAP, DEFAULT_COLOR
 
 
 def get_palette_color(color_idx, max_colors):

@@ -1,7 +1,4 @@
-# File: facetings.py
-# Version: 1.21.0
-# Addons required: numpy, pillow, tkinterdnd2
-#
+"""A script for faceting polyhedra."""
 import os
 import re
 import shutil
@@ -27,7 +24,7 @@ except ImportError:
     HAS_PIL = False
 
 # Import modularized components
-from facetings_math import (
+from offviewer.facetings_math import (
     read_off,
     write_off,
     get_symmetry_group,
@@ -47,7 +44,7 @@ from facetings_math import (
     COLOR_MAP,
     DEFAULT_COLOR,
 )
-from facetings_renderer import HeadlessRenderer, render_grid_view, HAS_OPENGL_LIBS
+from offviewer.facetings_renderer import HeadlessRenderer, render_grid_view, HAS_OPENGL_LIBS
 
 
 def write_colored_off(filepath, vertices, faces):
@@ -589,10 +586,6 @@ class FacetingGUI:
         thread.daemon = True
         thread.start()
 
-    # File: facetings.py
-    # Version: 1.23.0
-    # Addons required: numpy, pillow, tkinterdnd2
-    #
     def run_generation(self):
         self.root.after(0, lambda: self.log_text.config(state="normal"))
         self.root.after(0, lambda: self.log_text.delete("1.0", tk.END))
@@ -1096,8 +1089,7 @@ class FacetingGUI:
 
         self.run_button.config(state="normal")
 
-
-if __name__ == "__main__":
+def main():
     multiprocessing.freeze_support()
     if HAS_TKDND:
         root = TkinterDnD.Tk()
@@ -1105,3 +1097,6 @@ if __name__ == "__main__":
         root = tk.Tk()
     app = FacetingGUI(root)
     root.mainloop()
+
+if __name__ == "__main__":
+    main()
