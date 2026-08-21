@@ -7,14 +7,15 @@ HELP TEXT
 This prograam will produce a variety of facetings from an input polyhedral off file.
 
 1. Search mode: Faceting - all facetings based on the selections below.   Noble - noble polyhedra only.
-2. Symmetry group can be left at full symmetry or a sub-symmetry can be selected.  
+2. Symmetry group can be left at full symmetry or a sub-symmetry can be selected.
 The check boxes below are fairly self-evident.  Regular faces only is deliberately inactive in Noble mode.
 
-Be careful using faceting mode with anything much more complex than a dodecahedron!  
+Be careful using faceting mode with anything much more complex than a dodecahedron!
 
 CHANGE LOG:
  To follow...
 """
+import importlib.util
 import os
 import re
 import shutil
@@ -39,19 +40,34 @@ try:
 except ImportError:
     HAS_PIL = False
 
-# Import modularized components
-from math_utils import (
-    read_off, write_off, get_symmetry_group, find_all_subgroups,
-    filter_conjugacy_classes, classify_subgroup, find_all_planar_faces,
-    find_all_regular_faces, group_into_orbits, solve_facetings,
-    filter_duplicate_solutions, is_connected_polyhedron,
-    orient_faces_outwards, normalize_face, load_cache,
-    has_adjacent_coplanar_faces, COLOR_MAP, DEFAULT_COLOR
-)
-from facetings_renderer import (
-    HeadlessRenderer, render_grid_view, HAS_OPENGL_LIBS,
-    get_face_component_indices, get_compound_color
-)
+# Import module from the same package as this one.
+# I would just like to use the import, but Jim isn't using this package as a package, and as a
+# consequence, I need to do something special to ensure that it still works for him to prevent
+# conflicts when he sends updates.
+try:
+    import math_utils
+except ModuleNotFoundError:
+    _spec = importlib.util.spec_from_file_location("math_utils", "math_utils.py")
+    if _spec is None:
+        print("Cannot import math_utils, library unavailable")
+        math_utils = None
+    else:
+        math_utils = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(math_utils)
+
+try:
+    import facetings_renderer
+except ModuleNotFoundError:
+    try:
+        from offviewer import facetings_renderer
+    except ModuleNotFoundError:
+        _spec = importlib.util.spec_from_file_location("facetings_renderer", "facetings_renderer.py")
+        if _spec is None:
+            print("Cannot import facetings_renderer, library unavailable")
+            facetings_renderer = None
+        else:
+            facetings_renderer = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(facetings_renderer)
 
 # Cache for subgroup classification to avoid redundant matrix exponentiations
 _classification_cache = {}
@@ -60,7 +76,7 @@ def cached_classify_subgroup(sg_indices, full_matrices):
     key = tuple(sorted(sg_indices))
     if key in _classification_cache:
         return _classification_cache[key]
-    res = classify_subgroup(sg_indices, full_matrices)
+    res = math_utils.classify_subgroup(sg_indices, full_matrices)
     _classification_cache[key] = res
     return res
 
@@ -80,7 +96,7 @@ def get_compound_color_int(c_idx, num_components):
     """Returns a distinct integer [0, 255] RGB color. Uses HSL if components > 8."""
     if num_components <= 8:
         return COMPOUND_COLORS[c_idx % len(COMPOUND_COLORS)]
-    
+
     hue = c_idx / num_components
     h = hue * 6.0
     c = 0.85 * (1.0 - abs(2.0 * 0.6 - 1.0))
@@ -96,11 +112,11 @@ def get_compound_color_int(c_idx, num_components):
 
 def write_colored_off(filepath, vertices, faces, colour_compounds_separately=True):
     """Writes an OFF file containing face colors based on face side counts or compound components.
-    
+
     Colors are strictly formatted as three integers from 0 to 255 (RGB) with no alpha channel.
     """
     filename = os.path.basename(filepath)
-    comp_indices, num_components = get_face_component_indices(faces)
+    comp_indices, num_components = facetings_renderer.get_face_component_indices(faces)
     use_compound_coloring = colour_compounds_separately and (num_components > 1)
 
     with open(filepath, 'w') as f:
@@ -112,16 +128,16 @@ def write_colored_off(filepath, vertices, faces, colour_compounds_separately=Tru
         for f_idx, face in enumerate(faces):
             if use_compound_coloring:
                 c_idx = comp_indices[f_idx]
-                color_float = get_compound_color(c_idx, num_components)
+                color_float = facetings_renderer.get_compound_color(c_idx, num_components)
                 color = [color_float[0] * 255.0, color_float[1] * 255.0, color_float[2] * 255.0]
             else:
                 sides = len(face)
-                color = COLOR_MAP.get(sides, DEFAULT_COLOR)
-            
+                color = math_utils.COLOR_MAP.get(sides, math_utils.DEFAULT_COLOR)
+
             r = int(max(0, min(255, round(color[0]))))
             g = int(max(0, min(255, round(color[1]))))
             b = int(max(0, min(255, round(color[2]))))
-            
+
             face_str = " ".join(str(idx) for idx in face)
             f.write(f"{len(face)} {face_str} {r} {g} {b}\n")
 
@@ -136,7 +152,7 @@ def get_connected_components(faces):
             u, v = face[i], face[(i+1)%len(face)]
             edge = frozenset([u, v])
             edge_to_faces.setdefault(edge, []).append(f_idx)
-            
+
     num_faces = len(faces)
     adj = [[] for _ in range(num_faces)]
     for edge, f_indices in edge_to_faces.items():
@@ -146,7 +162,7 @@ def get_connected_components(faces):
                 v = f_indices[j]
                 adj[u].append(v)
                 adj[v].append(u)
-                
+
     visited = [False] * num_faces
     components = []
     for start_idx in range(num_faces):
@@ -166,13 +182,13 @@ def get_connected_components(faces):
 
 def is_valid_or_transitive_compound(faces, vertices, symmetries, precomputed_permutations=None):
     """Allows single polyhedra and transitive/symmetric compounds, blocking trivial compounds.
-    
+
     Optimized with precomputed permutation mappings to run in O(1) time.
     """
     components = get_connected_components(faces)
     if len(components) <= 1:
         return True
-        
+
     if precomputed_permutations is None:
         centroid = np.mean(vertices, axis=0)
         V = vertices - centroid
@@ -186,24 +202,24 @@ def is_valid_or_transitive_compound(faces, vertices, symmetries, precomputed_per
             vertex_permutations.append(perm)
     else:
         vertex_permutations = precomputed_permutations
-        
-    comp_sets = [frozenset(normalize_face(f) for f in comp) for comp in components]
+
+    comp_sets = [frozenset(math_utils.normalize_face(f) for f in comp) for comp in components]
     C0 = comp_sets[0]
     mapped_to = [False] * len(comp_sets)
     mapped_to[0] = True
-    
+
     for perm in vertex_permutations:
         mapped_C0 = set()
         for face in C0:
             mapped_face = tuple(perm[v] for v in face)
-            mapped_C0.add(normalize_face(mapped_face))
+            mapped_C0.add(math_utils.normalize_face(mapped_face))
         mapped_C0 = frozenset(mapped_C0)
-        
+
         for idx, C_j in enumerate(comp_sets):
             if not mapped_to[idx] and mapped_C0 == C_j:
                 mapped_to[idx] = True
                 break
-                
+
     return all(mapped_to)
 
 # Version: 1.28.2
@@ -215,7 +231,7 @@ def has_vertex_adjacent_coplanar_faces(vertices, faces_list):
         pts = vertices[face]
         normal = None
         n_pts = len(face)
-        
+
         # Find three non-collinear points to determine the plane normal
         for i in range(n_pts):
             p1 = pts[i]
@@ -236,13 +252,13 @@ def has_vertex_adjacent_coplanar_faces(vertices, faces_list):
                     break
             if normal is not None:
                 break
-        
+
         if normal is None:
             normal = np.array([0.0, 0.0, 1.0])
-            
+
         d = np.dot(normal, pts[0])
         planes.append((normal, d))
-    
+
     n_faces = len(faces_list)
     for i in range(n_faces):
         for j in range(i+1, n_faces):
@@ -254,7 +270,7 @@ def has_vertex_adjacent_coplanar_faces(vertices, faces_list):
                     same_plane = abs(d1 - d2) < 1e-4
                 else:
                     same_plane = abs(d1 + d2) < 1e-4
-                
+
                 if same_plane:
                     set_i = set(faces_list[i])
                     set_j = set(faces_list[j])
@@ -266,33 +282,33 @@ def is_noble_polyhedron(vertices, faces, perms):
     """Verifies if the polyhedron is both face-transitive and vertex-transitive using precomputed permutations."""
     if not faces or not perms:
         return False
-    
-    norm_faces = [normalize_face(f) for f in faces]
+
+    norm_faces = [math_utils.normalize_face(f) for f in faces]
     face_set = set(norm_faces)
-    
+
     f0 = norm_faces[0]
     orbit0 = set()
     for perm in perms:
-        mapped_f0 = normalize_face(tuple(perm[v] for v in f0))
+        mapped_f0 = math_utils.normalize_face(tuple(perm[v] for v in f0))
         if mapped_f0 in face_set:
             orbit0.add(mapped_f0)
-    
+
     if len(orbit0) != len(face_set):
         return False
-        
+
     used_verts = set()
     for f in faces:
         used_verts.update(f)
     if not used_verts:
         return False
-        
+
     v0 = list(used_verts)[0]
     v_orbit = set()
     for perm in perms:
         mapped_v = perm[v0]
         if mapped_v in used_verts:
             v_orbit.add(mapped_v)
-    
+
     return len(v_orbit) == len(used_verts)
 
 
@@ -315,9 +331,9 @@ class FacetingGUI:
         self.strict_symmetry = tk.BooleanVar(value=False)
         self.regular_only = tk.BooleanVar(value=False)
         self.colour_compounds_separately = tk.BooleanVar(value=True)
-        
+
         # Load symmetry cache prior to any generation
-        load_cache()
+        math_utils.load_cache()
         self.subgroups_dict = {"Full Group (default)": [np.eye(3)]}
         self.symmetry_option = tk.StringVar(value="Full Group (default)")
         self.viewer_process = None
@@ -334,8 +350,8 @@ class FacetingGUI:
         self.colour_compounds_separately.trace_add("write", lambda *args: self.update_preview())
 
         # Setup headless renderer
-        if HAS_PIL and HAS_OPENGL_LIBS:
-            self.headless_renderer = HeadlessRenderer(400, 400)
+        if HAS_PIL and facetings_renderer.HAS_OPENGL_LIBS:
+            self.headless_renderer = facetings_renderer.HeadlessRenderer(400, 400)
         else:
             self.headless_renderer = None
 
@@ -356,10 +372,10 @@ class FacetingGUI:
         self.preview_label = tk.Label(right_frame, width=400, height=400, bg="#1e1e24")
         self.preview_label.pack(fill="both", expand=True)
 
-        if not HAS_PIL or not HAS_OPENGL_LIBS or self.headless_renderer is None:
+        if not HAS_PIL or not facetings_renderer.HAS_OPENGL_LIBS or self.headless_renderer is None:
             self.preview_label.config(
-                text="3D Preview Unavailable.\nPlease ensure pillow, moderngl, and pygame are installed.", 
-                fg="#888888", 
+                text="3D Preview Unavailable.\nPlease ensure pillow, moderngl, and pygame are installed.",
+                fg="#888888",
                 font=("Helvetica", 10)
             )
         else:
@@ -391,10 +407,10 @@ class FacetingGUI:
 
         self.vertex_checkbox = tk.Checkbutton(options_frame, text="Must use all vertices of the original polyhedron", variable=self.must_use_all)
         self.vertex_checkbox.grid(row=2, column=0, columnspan=2, sticky="w", pady=2)
-        
+
         tk.Checkbutton(options_frame, text="Filter out trivial compounds (allow transitive compounds)", variable=self.filter_compounds).grid(row=3, column=0, columnspan=2, sticky="w", pady=2)
         tk.Checkbutton(options_frame, text="Clear output folder before writing output", variable=self.clear_output_dir).grid(row=4, column=0, columnspan=2, sticky="w", pady=2)
-        tk.Checkbutton(options_frame, text="Filter out edge adjacent coplanar faces", variable=self.filter_coplanar).grid(row=5, column=0, columnspan=2, sticky="w", pady=2)  
+        tk.Checkbutton(options_frame, text="Filter out edge adjacent coplanar faces", variable=self.filter_coplanar).grid(row=5, column=0, columnspan=2, sticky="w", pady=2)
         tk.Checkbutton(options_frame, text="Filter out vertex adjacent coplanar faces", variable=self.filter_vertex_coplanar).grid(row=6, column=0, columnspan=2, sticky="w", pady=2)
         tk.Checkbutton(options_frame, text="Strict symmetry group matches only", variable=self.strict_symmetry).grid(row=7, column=0, columnspan=2, sticky="w", pady=2)
 
@@ -445,7 +461,7 @@ class FacetingGUI:
     def load_file(self, filepath):
         if not filepath or not os.path.exists(filepath):
             return
-            
+
         self.run_button.config(state="disabled")
         self.root.config(cursor="watch")
         self.log(f"Loading {os.path.basename(filepath)}...")
@@ -453,69 +469,69 @@ class FacetingGUI:
         threading.Thread(target=self._async_load_file, args=(filepath,), daemon=True).start()
 
     def _async_load_file(self, filepath):
-        try:
-            vertices, orig_faces = read_off(filepath)
+        if True:
+            vertices, orig_faces = math_utils.read_off(filepath)
             self.preview_vertices = vertices
             self.preview_faces = orig_faces
             self.preview_angle_x = 0.5
             self.preview_angle_y = 0.5
-            
+
             # Clear existing renderer cache
             if self.headless_renderer:
                 self.headless_renderer.clear_gpu_cache()
 
             self.root.after(0, self.update_preview)
             self.log(f"Successfully loaded {os.path.basename(filepath)} for preview ({len(vertices)} vertices).")
-            
+
             self.log("Detecting full symmetry group of the vertex coordinates...")
-            full_symmetries = get_symmetry_group(vertices)
+            full_symmetries = math_utils.get_symmetry_group(vertices)
             self.log(f"Found full symmetry group of size: {len(full_symmetries)}")
-            
+
             self.log("Determining all sub-symmetries...")
-            raw_subgroups, table = find_all_subgroups(full_symmetries)
-            
+            raw_subgroups, table = math_utils.find_all_subgroups(full_symmetries)
+
             self.log("Removing conjugate redundant sub-symmetries...")
-            subgroups = filter_conjugacy_classes(raw_subgroups, full_symmetries, table)
-            
+            subgroups = math_utils.filter_conjugacy_classes(raw_subgroups, full_symmetries, table)
+
             subgroups.sort(key=len, reverse=True)
-            
+
             base_names = []
             name_counts = {}
             for sg in subgroups:
                 size = len(sg)
                 if size == len(full_symmetries):
-                    name = f"Full Group: {classify_subgroup(sg, full_symmetries)} (size {size})"
+                    name = f"Full Group: {math_utils.classify_subgroup(sg, full_symmetries)} (size {size})"
                 elif size == 1:
-                    name = f"Trivial Group: {classify_subgroup(sg, full_symmetries)} (size 1)"
+                    name = f"Trivial Group: {math_utils.classify_subgroup(sg, full_symmetries)} (size 1)"
                 else:
-                    name = f"{classify_subgroup(sg, full_symmetries)} (size {size})"
+                    name = f"{math_utils.classify_subgroup(sg, full_symmetries)} (size {size})"
                 base_names.append(name)
                 name_counts[name] = name_counts.get(name, 0) + 1
-            
+
             seen_counts = {}
             self.subgroups_dict = {}
             subgroup_names = []
-            
+
             for idx, sg in enumerate(subgroups):
                 base_name = base_names[idx]
                 sg_matrices = [full_symmetries[i] for i in sg]
-                
+
                 if name_counts[base_name] > 1:
                     seen_counts[base_name] = seen_counts.get(base_name, 0) + 1
                     unique_name = f"{base_name} #{seen_counts[base_name]}"
                 else:
                     unique_name = base_name
-                
+
                 self.subgroups_dict[unique_name] = sg_matrices
                 subgroup_names.append(unique_name)
-            
+
             self.root.after(0, lambda: self.rebuild_symmetry_dropdown(subgroup_names))
             self.log(f"Identified {len(subgroups)} non-conjugate symmetry groups.")
-            
-        except Exception as e:
+
+        if False:
             self.log(f"Error loading preview for {os.path.basename(filepath)}: {e}")
-            
-        finally:
+
+        if True:
             self.root.after(0, lambda: self.root.config(cursor=""))
             self.root.after(0, lambda: self.run_button.config(state="normal"))
 
@@ -523,9 +539,9 @@ class FacetingGUI:
         if self.headless_renderer is None or self.preview_vertices is None or self.preview_faces is None:
             return
         img = self.headless_renderer.render(
-            self.preview_vertices, 
-            self.preview_faces, 
-            self.preview_angle_x, 
+            self.preview_vertices,
+            self.preview_faces,
+            self.preview_angle_x,
             self.preview_angle_y,
             colour_compounds_separately=self.colour_compounds_separately.get()
         )
@@ -567,7 +583,7 @@ class FacetingGUI:
             path = path[1:-1]
         elif path.startswith('"') and path.endswith('"'):
             path = path[1:-1]
-            
+
         if os.path.exists(path) and path.lower().endswith('.off'):
             self.off_filepath.set(path)
             self.load_file(path)
@@ -614,14 +630,14 @@ class FacetingGUI:
             return
 
         self.run_button.config(state="disabled")
-        
+
         try:
             self.log(f"Reading: {os.path.basename(filepath)}...")
-            vertices, orig_faces = read_off(filepath)
+            vertices, orig_faces = math_utils.read_off(filepath)
             self.log(f"Polyhedron loaded with {len(vertices)} vertices.")
 
             self.log("Detecting full symmetry group of the vertex coordinates...")
-            full_symmetries = get_symmetry_group(vertices)
+            full_symmetries = math_utils.get_symmetry_group(vertices)
             self.log(f"Found full symmetry group of size: {len(full_symmetries)}")
 
             if hasattr(self, 'subgroups_dict') and sym_name in self.subgroups_dict:
@@ -636,16 +652,16 @@ class FacetingGUI:
 
             if mode == "Noble":
                 self.log("Searching for planar coplanar face candidates...")
-                candidate_faces = find_all_planar_faces(vertices, symmetries_for_generator, log_callback=self.log)
+                candidate_faces = math_utils.find_all_planar_faces(vertices, symmetries_for_generator, log_callback=self.log)
             else:
                 if reg_only:
                     self.log(f"Largest face in input has {max_input_k} vertices. Limit 'k' set to: {max_k}")
                     self.log("Searching for regular/star faces...")
-                    candidate_faces = find_all_regular_faces(vertices, symmetries_for_generator, max_k=max_k, log_callback=self.log)
+                    candidate_faces = math_utils.find_all_regular_faces(vertices, symmetries_for_generator, max_k=max_k, log_callback=self.log)
                 else:
                     self.log("Searching for all planar coplanar face candidates (including non-regular)...")
-                    candidate_faces = find_all_planar_faces(vertices, symmetries_for_generator, log_callback=self.log)
-                
+                    candidate_faces = math_utils.find_all_planar_faces(vertices, symmetries_for_generator, log_callback=self.log)
+
             self.log(f"Found {len(candidate_faces)} candidate face(s).")
 
             if not candidate_faces:
@@ -654,7 +670,7 @@ class FacetingGUI:
                 return
 
             self.log("Grouping candidate faces into orbits...")
-            orbits = group_into_orbits(candidate_faces, vertices, symmetries_for_generator)
+            orbits = math_utils.group_into_orbits(candidate_faces, vertices, symmetries_for_generator)
             self.log(f"Grouped into {len(orbits)} unique orbit(s).")
 
             if mode == "Noble":
@@ -667,7 +683,7 @@ class FacetingGUI:
                             u, v = face[i], face[(i+1)%len(face)]
                             edge = frozenset([u, v])
                             edge_counts[edge] = edge_counts.get(edge, 0) + 1
-                    
+
                     if all(count == 2 for count in edge_counts.values()):
                         used_verts = set()
                         for face in orbit:
@@ -678,19 +694,19 @@ class FacetingGUI:
                 self.log(f"Noble filtering identified {len(raw_solutions)} candidate noble orbit(s).")
             else:
                 self.log("Running backtracking solver...")
-                raw_solutions = solve_facetings(
-                    orbits, 
-                    candidate_faces, 
-                    len(vertices), 
-                    must_all, 
+                raw_solutions = math_utils.solve_facetings(
+                    orbits,
+                    candidate_faces,
+                    len(vertices),
+                    must_all,
                     progress_callback=lambda: self.log_raw(".")
                 )
-                self.log("") 
+                self.log("")
                 self.log(f"Solver generated {len(raw_solutions)} raw solution(s).")
 
             self.log("Filtering out duplicates, reflections, and rotational equivalents...")
-            unique_solutions = filter_duplicate_solutions(raw_solutions, vertices, full_symmetries)
-            
+            unique_solutions = math_utils.filter_duplicate_solutions(raw_solutions, vertices, full_symmetries)
+
             # Map vertices to local coordinates for full permutations (Precomputed once)
             centroid = np.mean(vertices, axis=0)
             V = vertices - centroid
@@ -708,13 +724,13 @@ class FacetingGUI:
                 pre_count = len(unique_solutions)
                 unique_solutions = [sol for sol in unique_solutions if is_valid_or_transitive_compound(sol, vertices, full_symmetries, precomputed_permutations=full_permutations)]
                 self.log(f"Removed {pre_count - len(unique_solutions)} trivial compound(s).")
-                
+
             if self.filter_coplanar.get():
                 self.log("Filtering out results with edge adjacent coplanar faces...")
                 pre_count = len(unique_solutions)
-                unique_solutions = [sol for sol in unique_solutions if not has_adjacent_coplanar_faces(vertices, sol)]
-                self.log(f"Removed {pre_count - len(unique_solutions)} solution(s) with edge adjacent coplanar faces.")    
-                
+                unique_solutions = [sol for sol in unique_solutions if not math_utils.has_adjacent_coplanar_faces(vertices, sol)]
+                self.log(f"Removed {pre_count - len(unique_solutions)} solution(s) with edge adjacent coplanar faces.")
+
             if self.filter_vertex_coplanar.get():
                 self.log("Filtering out results with vertex adjacent coplanar faces...")
                 pre_count = len(unique_solutions)
@@ -726,10 +742,10 @@ class FacetingGUI:
                 pre_count = len(unique_solutions)
                 filtered_solutions = []
                 for sol in unique_solutions:
-                    sol_set = {normalize_face(f) for f in sol}
+                    sol_set = {math_utils.normalize_face(f) for f in sol}
                     actual_sym_count = 0
                     for perm in full_permutations:
-                        mapped_sol = {normalize_face(tuple(perm[v] for v in f)) for f in sol}
+                        mapped_sol = {math_utils.normalize_face(tuple(perm[v] for v in f)) for f in sol}
                         if mapped_sol == sol_set:
                             actual_sym_count += 1
                     if actual_sym_count == len(symmetries_for_generator):
@@ -740,9 +756,9 @@ class FacetingGUI:
             self.log("Orients faces of solutions outwards relative to polyhedron centroid...")
             oriented_solutions = []
             for sol in unique_solutions:
-                oriented_solutions.append(orient_faces_outwards(vertices, sol))
+                oriented_solutions.append(math_utils.orient_faces_outwards(vertices, sol))
             unique_solutions = oriented_solutions
-            
+
             # Suppress only flat solutions where all vertices in any connected component of the compound are coplanar
             non_flat_solutions = []
             for sol in unique_solutions:
@@ -807,7 +823,7 @@ class FacetingGUI:
                     dy = p2[1] - p1[1]
                     dz = p2[2] - p1[2]
                     used_edges_dists.append(math.sqrt(dx*dx + dy*dy + dz*dz))
-                
+
                 # Filter, sort, and identify unique distances
                 unique_dists = []
                 for d in sorted(used_edges_dists):
@@ -815,7 +831,7 @@ class FacetingGUI:
                         continue
                     if not unique_dists or abs(d - unique_dists[-1]) > 1e-4:
                         unique_dists.append(d)
-                
+
                 # Map each unique distance to letters/numbers (a-z, a1-z1, a2-z2, etc.)
                 distance_to_letter = {}
                 for idx, d in enumerate(unique_dists):
@@ -837,7 +853,7 @@ class FacetingGUI:
                     face_tuple = tuple(face)
                     if face_tuple in _oriented_key_cache:
                         return _oriented_key_cache[face_tuple]
-                    
+
                     cleaned_face = []
                     for v in face_tuple:
                         if not cleaned_face:
@@ -873,7 +889,7 @@ class FacetingGUI:
                         dy = p2[1] - p1[1]
                         dz = p2[2] - p1[2]
                         d = math.sqrt(dx*dx + dy*dy + dz*dz)
-                        
+
                         matched_letter = '?'
                         if distance_to_letter:
                             closest_dist = min(distance_to_letter.keys(), key=lambda x: abs(x - d))
@@ -885,18 +901,18 @@ class FacetingGUI:
                         prev_p = vertices[cleaned_face[i-1]]
                         curr_p = vertices[cleaned_face[i]]
                         next_p = vertices[cleaned_face[(i+1)%n_f]]
-                        
+
                         v1_x = curr_p[0] - prev_p[0]
                         v1_y = curr_p[1] - prev_p[1]
                         v1_z = curr_p[2] - prev_p[2]
-                        
+
                         v2_x = next_p[0] - curr_p[0]
                         v2_y = next_p[1] - curr_p[1]
                         v2_z = next_p[2] - curr_p[2]
-                        
+
                         v1_len = math.sqrt(v1_x*v1_x + v1_y*v1_y + v1_z*v1_z)
                         v2_len = math.sqrt(v2_x*v2_x + v2_y*v2_y + v2_z*v2_z)
-                        
+
                         if v1_len > 1e-8 and v2_len > 1e-8:
                             dot_val = v1_x*v2_x + v1_y*v2_y + v1_z*v2_z
                             cos_val = dot_val / (v1_len * v2_len)
@@ -918,7 +934,7 @@ class FacetingGUI:
                     face_tuple = tuple(face)
                     if face_tuple in _canonical_key_cache:
                         return _canonical_key_cache[face_tuple]
-                        
+
                     opt1 = get_face_oriented_key(face_tuple, tol)
                     if not opt1:
                         _canonical_key_cache[face_tuple] = None
@@ -962,26 +978,26 @@ class FacetingGUI:
                         unoriented_key = get_face_canonical_key(face, tol)
                         if not unoriented_key:
                             continue
-                        
+
                         oriented_key = get_face_oriented_key(face, tol)
                         unoriented_name = key_to_name.get(unoriented_key, "unknown")
-                        
+
                         is_forward = (oriented_key == unoriented_key)
                         type_to_oriented.setdefault(unoriented_name, set()).add("F" if is_forward else "R")
-                    
+
                     face_types = []
                     for utype, oriented_set in type_to_oriented.items():
                         if len(oriented_set) > 1:
                             face_types.append(utype + "+R")
                         else:
                             face_types.append(utype)
-                    
+
                     base_name = "-".join(sorted(face_types))
-                    
+
                     components = get_connected_components(sol)
                     if len(components) > 1:
                         base_name += f"-C{len(components)}"
-                        
+
                     return base_name + extra_suffix + ".off"
 
                 def sanitize_filename(name):
@@ -996,27 +1012,27 @@ class FacetingGUI:
                     return name_part + ext
 
                 written_filenames = set()
-                
+
                 for idx, sol in enumerate(unique_solutions):
-                    has_eac = has_adjacent_coplanar_faces(vertices, sol)
+                    has_eac = math_utils.has_adjacent_coplanar_faces(vertices, sol)
                     has_vac = has_vertex_adjacent_coplanar_faces(vertices, sol)
-                    
+
                     # Calculate active symmetries for this specific solution to verify if it is noble
-                    sol_set = {normalize_face(f) for f in sol}
+                    sol_set = {math_utils.normalize_face(f) for f in sol}
                     f0 = sol[0]
                     actual_perms = []
                     actual_syms = []
                     for s_idx, perm in enumerate(full_permutations):
                         # Early exit: if the first face doesn't map into the solution set, skip full check
-                        mapped_f0 = normalize_face(tuple(perm[v] for v in f0))
+                        mapped_f0 = math_utils.normalize_face(tuple(perm[v] for v in f0))
                         if mapped_f0 not in sol_set:
                             continue
-                            
-                        mapped_sol = {normalize_face(tuple(perm[v] for v in f)) for f in sol}
+
+                        mapped_sol = {math_utils.normalize_face(tuple(perm[v] for v in f)) for f in sol}
                         if mapped_sol == sol_set:
                             actual_perms.append(perm)
                             actual_syms.append(full_symmetries[s_idx])
-                    
+
                     # Fast symmetry-transitivity evaluation using precomputed vertex indices
                     is_noble = is_noble_polyhedron(vertices, sol, actual_perms)
 
@@ -1027,7 +1043,7 @@ class FacetingGUI:
                             if np.linalg.norm(g - s) < 1e-7:
                                 actual_indices.append(s_idx)
                                 break
-                    
+
                     actual_group_desc = cached_classify_subgroup(actual_indices, full_symmetries)
                     match = re.search(r'\(([^)]+)\)', actual_group_desc)
                     if match:
@@ -1058,12 +1074,12 @@ class FacetingGUI:
                     write_colored_off(out_path, vertices, sol, colour_compounds_separately=compound_col)
 
                 self.log(f"Exported all files to: '{out_dir}'")
-                
-                if HAS_OPENGL_LIBS:
+
+                if facetings_renderer.HAS_OPENGL_LIBS:
                     self.log("Launching ModernGL 3D Grid view window in a separate process...")
                     try:
                         self.viewer_process = multiprocessing.Process(
-                            target=render_grid_view,
+                            target=facetings_renderer.render_grid_view,
                             args=(vertices, unique_solutions),
                             kwargs={'colour_compounds_separately': compound_col}
                         )
@@ -1082,11 +1098,10 @@ class FacetingGUI:
         except Exception as e:
             self.log(f"Exception encountered: {str(e)}")
             messagebox.showerror("Execution Error", f"An error occurred: {str(e)}")
-        
+
         self.run_button.config(state="normal")
 
-
-if __name__ == "__main__":
+def main():
     multiprocessing.freeze_support()
     if HAS_TKDND:
         root = TkinterDnD.Tk()
@@ -1094,3 +1109,6 @@ if __name__ == "__main__":
         root = tk.Tk()
     app = FacetingGUI(root)
     root.mainloop()
+
+if __name__ == "__main__":
+    main()

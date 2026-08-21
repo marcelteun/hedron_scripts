@@ -19,7 +19,20 @@ try:
 except ImportError:
     HAS_PIL = False
 
-from math_utils import perspective_matrix, rotation_matrix, COLOR_MAP, DEFAULT_COLOR
+# Import module from the same package as this one.
+# I would just like to use the import, but Jim isn't using this package as a package, and as a
+# consequence, I need to do something special to ensure that it still works for him to prevent
+# conflicts when he sends updates.
+try:
+    import math_utils
+except ModuleNotFoundError:
+    _spec = importlib.util.spec_from_file_location("math_utils", "math_utils.py")
+    if _spec is None:
+        print("Cannot import math_utils, library unavailable")
+        math_utils = None
+    else:
+        math_utils = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(math_utils)
 
 # Base palette for the first 8 components
 COMPOUND_COLORS_FLOAT = [
@@ -37,7 +50,7 @@ def get_compound_color(c_idx, num_components):
     """Returns a distinct float color. Uses the base palette, or generates HSL colors if components > 8."""
     if num_components <= 8:
         return COMPOUND_COLORS_FLOAT[c_idx % len(COMPOUND_COLORS_FLOAT)]
-    
+
     hue = c_idx / num_components
     h = hue * 6.0
     c = 0.85 * (1.0 - abs(2.0 * 0.6 - 1.0))
@@ -61,7 +74,7 @@ def get_face_component_indices(faces):
             u, v = face[i], face[(i+1)%len(face)]
             edge = frozenset([u, v])
             edge_to_faces.setdefault(edge, []).append(f_idx)
-            
+
     num_faces = len(faces)
     adj = [[] for _ in range(num_faces)]
     for edge, f_indices in edge_to_faces.items():
@@ -71,7 +84,7 @@ def get_face_component_indices(faces):
                 v = f_indices[j]
                 adj[u].append(v)
                 adj[v].append(u)
-                
+
     visited = [False] * num_faces
     comp_indices = [-1] * num_faces
     comp_count = 0
@@ -94,7 +107,7 @@ class HeadlessRenderer:
         self.width = width
         self.height = height
         self.ctx = None
-        
+
         # GPU Buffer Cache Properties
         self.cache_key = None
         self.vbo_solid = None
@@ -103,7 +116,7 @@ class HeadlessRenderer:
         self.vao_lines = None
         self.cached_num_solid = 0
         self.cached_num_lines = 0
-        
+
         if HAS_OPENGL_LIBS and HAS_PIL:
             try:
                 self.ctx = moderngl.create_standalone_context()
@@ -209,13 +222,13 @@ class HeadlessRenderer:
             for f_idx, face in enumerate(faces):
                 pts = scaled_vertices[list(face)]
                 face_centroid = np.mean(pts, axis=0)
-                
+
                 if use_compound_coloring:
                     c_idx = comp_indices[f_idx]
                     color = get_compound_color(c_idx, num_components)
                 else:
                     sides = len(face)
-                    raw_color = COLOR_MAP.get(sides, DEFAULT_COLOR)
+                    raw_color = math_utils.COLOR_MAP.get(sides, math_utils.DEFAULT_COLOR)
                     color = [c / 255.0 for c in raw_color]
 
                 if len(pts) >= 3:
@@ -258,13 +271,13 @@ class HeadlessRenderer:
 
             self.vbo_lines = self.ctx.buffer(l_data.tobytes())
             self.vao_lines = self.ctx.simple_vertex_array(self.prog_lines, self.vbo_lines, 'in_position')
-            
+
             self.cache_key = current_key
             self.cached_num_solid = len(v_data) // 3
             self.cached_num_lines = len(l_data) // 3
 
         aspect = self.width / self.height
-        proj = perspective_matrix(45.0, aspect, 0.1, 10.0)
+        proj = math_utils.perspective_matrix(45.0, aspect, 0.1, 10.0)
         view = np.array([
             [1, 0, 0, 0],
             [0, 1, 0, 0],
@@ -272,7 +285,7 @@ class HeadlessRenderer:
             [0, 0, 0, 1]
         ], dtype='float32')
 
-        model = rotation_matrix(angle_x, angle_y)
+        model = math_utils.rotation_matrix(angle_x, angle_y)
         mvp = proj @ view @ model
         mv = view @ model
 
@@ -373,26 +386,26 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
         for f_idx, face in enumerate(sol):
             pts = scaled_vertices[list(face)]
             face_centroid = np.mean(pts, axis=0)
-            
+
             if use_compound_coloring:
                 c_idx = comp_indices[f_idx]
                 color = get_compound_color(c_idx, num_components)
             else:
                 sides = len(face)
-                raw_color = COLOR_MAP.get(sides, DEFAULT_COLOR)
+                raw_color = math_utils.COLOR_MAP.get(sides, math_utils.DEFAULT_COLOR)
                 color = [c / 255.0 for c in raw_color]
-            
+
             if len(pts) >= 3:
                 norm = np.cross(pts[1] - pts[0], pts[2] - pts[0])
                 n_len = np.linalg.norm(norm)
                 norm = norm / n_len if n_len > 1e-6 else np.array([0.0, 0.0, 1.0])
             else:
                 norm = np.array([0.0, 0.0, 1.0])
-                
+
             for i in range(len(face)):
                 p1 = pts[i]
                 p2 = pts[(i + 1) % len(face)]
-                
+
                 tri_vertices.extend(face_centroid)
                 tri_vertices.extend(p1)
                 tri_vertices.extend(p2)
@@ -402,7 +415,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
                 tri_colors.extend(color)
                 tri_colors.extend(color)
                 tri_colors.extend(color)
-                
+
                 line_vertices.extend(p1)
                 line_vertices.extend(p2)
 
@@ -410,7 +423,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
         n_data = np.array(tri_normals, dtype='float32')
         c_data = np.array(tri_colors, dtype='float32')
         l_data = np.array(line_vertices, dtype='float32')
-        
+
         vbo_array = np.zeros(len(v_data) // 3 * 9, dtype='float32')
         for i in range(len(v_data) // 3):
             vbo_array[9*i : 9*i+3] = v_data[3*i : 3*i+3]
@@ -419,10 +432,10 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
 
         vbo_solid = ctx.buffer(vbo_array.tobytes())
         vao_solid = ctx.vertex_array(prog_solid, [(vbo_solid, '3f 3f 3f', 'in_position', 'in_normal', 'in_color')])
-        
+
         vbo_lines = ctx.buffer(l_data.tobytes())
         vao_lines = ctx.simple_vertex_array(prog_lines, vbo_lines, 'in_position')
-        
+
         vaos.append((vao_solid, len(v_data) // 3, vao_lines, len(l_data) // 3))
 
     num_sols = len(vaos)
@@ -451,21 +464,21 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
                     running = False
 
         ctx.clear(0.12, 0.12, 0.14, 1.0)
-        
+
         cell_w = screen_w // cols
         cell_h = screen_h // rows
 
         for idx, (vao_solid, num_solid, vao_lines, num_lines) in enumerate(vaos):
             r = idx // cols
             c = idx % cols
-            
+
             vx = c * cell_w
             vy = (rows - 1 - r) * cell_h
             ctx.viewport = (vx, vy, cell_w, cell_h)
 
             aspect = cell_w / cell_h if cell_h > 0 else 1.0
-            proj = perspective_matrix(45.0, aspect, 0.1, 10.0)
-            
+            proj = math_utils.perspective_matrix(45.0, aspect, 0.1, 10.0)
+
             view = np.array([
                 [1, 0, 0, 0],
                 [0, 1, 0, 0],
@@ -473,14 +486,14 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
                 [0, 0, 0, 1]
             ], dtype='float32')
 
-            model = rotation_matrix(angle_x, angle_y)
+            model = math_utils.rotation_matrix(angle_x, angle_y)
             mvp = proj @ view @ model
             mv = view @ model
 
             prog_solid['mvp'].write(mvp.T.copy().tobytes())
             prog_solid['mv'].write(mv.T.copy().tobytes())
             vao_solid.render(moderngl.TRIANGLES)
-            
+
             prog_lines['mvp'].write(mvp.T.copy().tobytes())
             vao_lines.render(moderngl.LINES)
 
@@ -571,7 +584,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
         tri_normals = []
         tri_colors = []
         line_vertices = []
-        
+
         if is_noble:
             face_color_indices = compute_noble_face_colors(sol, len(vertices))
             max_c = max(face_color_indices) + 1 if face_color_indices else 1
@@ -582,7 +595,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
         for f_idx, face in enumerate(sol):
             pts = scaled_vertices[list(face)]
             face_centroid = np.mean(pts, axis=0)
-            
+
             if use_compound_coloring:
                 c_idx = comp_indices[f_idx]
                 color = get_compound_color(c_idx, num_components)
@@ -590,20 +603,20 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
                 color = get_palette_color(face_color_indices[f_idx], max_c)
             else:
                 sides = len(face)
-                raw_color = COLOR_MAP.get(sides, DEFAULT_COLOR)
+                raw_color = math_utils.COLOR_MAP.get(sides, math_utils.DEFAULT_COLOR)
                 color = [c / 255.0 for c in raw_color]
-            
+
             if len(pts) >= 3:
                 norm = np.cross(pts[1] - pts[0], pts[2] - pts[0])
                 n_len = np.linalg.norm(norm)
                 norm = norm / n_len if n_len > 1e-6 else np.array([0.0, 0.0, 1.0])
             else:
                 norm = np.array([0.0, 0.0, 1.0])
-                
+
             for i in range(len(face)):
                 p1 = pts[i]
                 p2 = pts[(i + 1) % len(face)]
-                
+
                 tri_vertices.extend(face_centroid)
                 tri_vertices.extend(p1)
                 tri_vertices.extend(p2)
@@ -613,7 +626,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
                 tri_colors.extend(color)
                 tri_colors.extend(color)
                 tri_colors.extend(color)
-                
+
                 line_vertices.extend(p1)
                 line_vertices.extend(p2)
 
@@ -621,7 +634,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
         n_data = np.array(tri_normals, dtype='float32')
         c_data = np.array(tri_colors, dtype='float32')
         l_data = np.array(line_vertices, dtype='float32')
-        
+
         vbo_array = np.zeros(len(v_data) // 3 * 9, dtype='float32')
         for i in range(len(v_data) // 3):
             vbo_array[9*i : 9*i+3] = v_data[3*i : 3*i+3]
@@ -630,10 +643,10 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
 
         vbo_solid = ctx.buffer(vbo_array.tobytes())
         vao_solid = ctx.vertex_array(prog_solid, [(vbo_solid, '3f 3f 3f', 'in_position', 'in_normal', 'in_color')])
-        
+
         vbo_lines = ctx.buffer(l_data.tobytes())
         vao_lines = ctx.simple_vertex_array(prog_lines, vbo_lines, 'in_position')
-        
+
         vaos.append((vao_solid, len(v_data) // 3, vao_lines, len(l_data) // 3))
 
     num_sols = len(vaos)
@@ -662,21 +675,21 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
                     running = False
 
         ctx.clear(0.12, 0.12, 0.14, 1.0)
-        
+
         cell_w = screen_w // cols
         cell_h = screen_h // rows
 
         for idx, (vao_solid, num_solid, vao_lines, num_lines) in enumerate(vaos):
             r = idx // cols
             c = idx % cols
-            
+
             vx = c * cell_w
             vy = (rows - 1 - r) * cell_h
             ctx.viewport = (vx, vy, cell_w, cell_h)
 
             aspect = cell_w / cell_h if cell_h > 0 else 1.0
-            proj = perspective_matrix(45.0, aspect, 0.1, 10.0)
-            
+            proj = math_utils.perspective_matrix(45.0, aspect, 0.1, 10.0)
+
             view = np.array([
                 [1, 0, 0, 0],
                 [0, 1, 0, 0],
@@ -684,14 +697,14 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
                 [0, 0, 0, 1]
             ], dtype='float32')
 
-            model = rotation_matrix(angle_x, angle_y)
+            model = math_utils.rotation_matrix(angle_x, angle_y)
             mvp = proj @ view @ model
             mv = view @ model
 
             prog_solid['mvp'].write(mvp.T.copy().tobytes())
             prog_solid['mv'].write(mv.T.copy().tobytes())
             vao_solid.render(moderngl.TRIANGLES)
-            
+
             prog_lines['mvp'].write(mvp.T.copy().tobytes())
             vao_lines.render(moderngl.LINES)
 
