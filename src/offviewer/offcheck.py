@@ -1,11 +1,17 @@
-"""This file can be used to get the properties of an object decribed in the OFF format."""
+# File: offcheck.py
+# Version: 4.6
+# Addons required: pip install numpy (and windnd for Windows drag-and-drop)
+'''
+Change log:
+190826 - T(V-E-F) added (count of vertex edge and face types)
+       - Regular faces flag added
+       - Conclusion section extended to include display of 'Noble Polyhedron' etc based on above
+       - OFF files with no 0 vertex now handled and warning message issued.
 
+'''
 import csv
 import ctypes
 import heapq
-import math
-import os
-import sys
 import math
 import os
 import re
@@ -16,9 +22,8 @@ import tkinter as tk
 from tkinter import filedialog, scrolledtext
 
 import numpy as np
-import windnd
 
-from offviewer import facetings_math
+import math_utils
 
 # Conditionally import windnd based on OS
 if sys.platform == "win32":
@@ -26,81 +31,17 @@ if sys.platform == "win32":
 else:
     windnd = None
 
+# File: offcheck.py
+# Version: 5.0
 
-def calculate_face_normal_and_area(coords):
-    """Calculates the area and the Newell normal of a 3D polygon, handling self-intersections for absolute area."""
-    if len(coords) < 3:
-        return (0, 0, 0), 0.0
-    nx = ny = nz = 0.0
-    for i in range(len(coords)):
-        v_curr = coords[i]
-        v_next = coords[(i + 1) % len(coords)]
-        nx += (v_curr[1] - v_next[1]) * (v_curr[2] + v_next[2])
-        ny += (v_curr[2] - v_next[2]) * (v_curr[0] + v_next[0])
-        nz += (v_curr[0] - v_next[0]) * (v_curr[1] + v_next[1])
-
-    length = math.sqrt(nx**2 + ny**2 + nz**2)
-    if length == 0:
-        return (0, 0, 0), 0.0
-    normal = (nx / length, ny / length, nz / length)
-
-    # Helper to project 3D coordinates to 2D isometry
-    def project_to_2d_isometry(pts, n_vec):
-        n_arr = np.array(n_vec)
-        if abs(n_arr[0]) < 0.9:
-            ref = np.array([1.0, 0.0, 0.0])
-        else:
-            ref = np.array([0.0, 1.0, 0.0])
-        u = np.cross(n_arr, ref)
-        u /= np.linalg.norm(u)
-        v = np.cross(n_arr, u)
-        return [np.array([np.dot(p, u), np.dot(p, v)]) for p in pts]
-
-    # Helper to compute absolute area of possibly self-intersecting 2D polygon
-    def compute_absolute_area_2d(p2d):
-        n_pts = len(p2d)
-        for i in range(n_pts):
-            for j in range(i + 2, n_pts):
-                if i == 0 and j == n_pts - 1:
-                    continue
-                A = p2d[i]
-                B = p2d[(i + 1) % n_pts]
-                C = p2d[j]
-                D = p2d[(j + 1) % n_pts]
-
-                r = B - A
-                s = D - C
-                denom = r[0] * s[1] - r[1] * s[0]
-                if abs(denom) > 1e-12:
-                    num_t = (C[0] - A[0]) * s[1] - (C[1] - A[1]) * s[0]
-                    num_u = (C[0] - A[0]) * r[1] - (C[1] - A[1]) * r[0]
-                    t = num_t / denom
-                    u = num_u / denom
-                    if 1e-11 < t < 1.0 - 1e-11 and 1e-11 < u < 1.0 - 1e-11:
-                        P = A + t * r
-                        loop1 = p2d[i + 1 : j + 1] + [P]
-                        loop2 = p2d[j + 1 :] + p2d[: i + 1] + [P]
-                        return compute_absolute_area_2d(
-                            loop1
-                        ) + compute_absolute_area_2d(loop2)
-
-        area = 0.0
-        for i in range(n_pts):
-            p1 = p2d[i]
-            p2 = p2d[(i + 1) % n_pts]
-            area += p1[0] * p2[1] - p2[0] * p1[1]
-        return 0.5 * abs(area)
-
-    p2d_proj = project_to_2d_isometry(coords, normal)
-    abs_area = compute_absolute_area_2d(p2d_proj)
-    return normal, abs_area
-
+# File: offcheck.py
+# Version: 5.1
 
 def get_convex_hull_normal(coords):
     """Computes a stable plane normal by finding the 2D convex hull of projected 3D coordinates."""
     if len(coords) < 3:
         return (0.0, 0.0, 1.0)
-
+    
     pts = np.array(coords)
     centroid = np.mean(pts, axis=0)
     pts_centered = pts - centroid
@@ -154,33 +95,100 @@ def get_convex_hull_normal(coords):
     hull_pts_2d = lower[:-1] + upper[:-1]
     hull_coords = [coords[p[2]] for p in hull_pts_2d]
 
-    hull_normal, _ = calculate_face_normal_and_area(hull_coords)
-    return hull_normal
+    if len(hull_coords) >= 3:
+        p0 = np.array(hull_coords[0])
+        p1 = np.array(hull_coords[1])
+        p2 = np.array(hull_coords[2])
+        hull_normal = np.cross(p1 - p0, p2 - p1)
+        hn_norm = np.linalg.norm(hull_normal)
+        if hn_norm > 1e-12:
+            hull_normal /= hn_norm
+        else:
+            hull_normal = normal_pca
+    else:
+        hull_normal = normal_pca
 
+    return tuple(hull_normal)
+
+
+def calculate_face_normal_and_area(coords):
+    """Calculates the area and the stable plane normal of a 3D polygon, handling self-intersections for absolute area."""
+    if len(coords) < 3:
+        return (0, 0, 0), 0.0
+    
+    # Compute normal robustly using PCA of the convex hull to avoid Newell cancellation
+    normal = get_convex_hull_normal(coords)
+
+    # Helper to project 3D coordinates to 2D isometry
+    def project_to_2d_isometry(pts, n_vec):
+        n_arr = np.array(n_vec)
+        if abs(n_arr[0]) < 0.9:
+            ref = np.array([1.0, 0.0, 0.0])
+        else:
+            ref = np.array([0.0, 1.0, 0.0])
+        u = np.cross(n_arr, ref)
+        u_norm = np.linalg.norm(u)
+        if u_norm > 1e-12:
+            u /= u_norm
+        v = np.cross(n_arr, u)
+        return [np.array([np.dot(p, u), np.dot(p, v)]) for p in pts]
+
+    # Helper to compute absolute area of possibly self-intersecting 2D polygon
+    def compute_absolute_area_2d(p2d):
+        n_pts = len(p2d)
+        for i in range(n_pts):
+            for j in range(i + 2, n_pts):
+                if i == 0 and j == n_pts - 1:
+                    continue
+                A = p2d[i]
+                B = p2d[(i + 1) % n_pts]
+                C = p2d[j]
+                D = p2d[(j + 1) % n_pts]
+                
+                r = B - A
+                s = D - C
+                denom = r[0]*s[1] - r[1]*s[0]
+                if abs(denom) > 1e-12:
+                    num_t = (C[0]-A[0])*s[1] - (C[1]-A[1])*s[0]
+                    num_u = (C[0]-A[0])*r[1] - (C[1]-A[1])*r[0]
+                    t = num_t / denom
+                    u = num_u / denom
+                    if 1e-11 < t < 1.0 - 1e-11 and 1e-11 < u < 1.0 - 1e-11:
+                        P = A + t * r
+                        loop1 = p2d[i+1 : j+1] + [P]
+                        loop2 = p2d[j+1:] + p2d[:i+1] + [P]
+                        return compute_absolute_area_2d(loop1) + compute_absolute_area_2d(loop2)
+        
+        area = 0.0
+        for i in range(n_pts):
+            p1 = p2d[i]
+            p2 = p2d[(i + 1) % n_pts]
+            area += p1[0] * p2[1] - p2[0] * p1[1]
+        return 0.5 * abs(area)
+
+    p2d_proj = project_to_2d_isometry(coords, normal)
+    abs_area = compute_absolute_area_2d(p2d_proj)
+    return normal, abs_area
 
 def is_concave_face(coords, face_normal):
     """Checks if a face is non-convex."""
     if len(coords) < 4:
-        return False
-
+        return False  
+    
     for i in range(len(coords)):
         v_prev = coords[i - 1]
         v_curr = coords[i]
         v_next = coords[(i + 1) % len(coords)]
-
+        
         e1 = (v_curr[0] - v_prev[0], v_curr[1] - v_prev[1], v_curr[2] - v_prev[2])
         e2 = (v_next[0] - v_curr[0], v_next[1] - v_curr[1], v_next[2] - v_curr[2])
-
+        
         local_nx = e1[1] * e2[2] - e1[2] * e2[1]
         local_ny = e1[2] * e2[0] - e1[0] * e2[2]
         local_nz = e1[0] * e2[1] - e1[1] * e2[0]
-
-        dot = (
-            local_nx * face_normal[0]
-            + local_ny * face_normal[1]
-            + local_nz * face_normal[2]
-        )
-        if dot < -1e-12:
+        
+        dot = local_nx * face_normal[0] + local_ny * face_normal[1] + local_nz * face_normal[2]
+        if dot < -1e-12: 
             return True
     return False
 
@@ -189,7 +197,7 @@ def is_crossed_face(coords, normal):
     """Checks if a face is self-intersecting (crossed) by projecting to 2D."""
     if len(coords) < 4:
         return False
-
+        
     nx, ny, nz = normal
     abs_x, abs_y, abs_z = abs(nx), abs(ny), abs(nz)
     if abs_z >= abs_x and abs_z >= abs_y:
@@ -198,7 +206,7 @@ def is_crossed_face(coords, normal):
         p2d = [(v[0], v[2]) for v in coords]
     else:
         p2d = [(v[1], v[2]) for v in coords]
-
+        
     n = len(p2d)
     for i in range(n):
         for j in range(i + 2, n):
@@ -208,19 +216,15 @@ def is_crossed_face(coords, normal):
             B = p2d[(i + 1) % n]
             C = p2d[j]
             D = p2d[(j + 1) % n]
-
+            
             def cp(p1, p2, p3):
-                return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p2[1] - p1[1]) * (
-                    p3[0] - p1[0]
-                )
-
+                return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p2[1] - p1[1]) * (p3[0] - p1[0])
             d1 = cp(C, D, A)
             d2 = cp(C, D, B)
             d3 = cp(A, B, C)
             d4 = cp(A, B, D)
-            if ((d1 > 1e-12 and d2 < -1e-12) or (d1 < -1e-12 and d2 > 1e-12)) and (
-                (d3 > 1e-12 and d4 < -1e-12) or (d3 < -1e-12 and d4 > 1e-12)
-            ):
+            if (((d1 > 1e-12 and d2 < -1e-12) or (d1 < -1e-12 and d2 > 1e-12)) and
+                ((d3 > 1e-12 and d4 < -1e-12) or (d3 < -1e-12 and d4 > 1e-12))):
                 return True
     return False
 
@@ -228,27 +232,27 @@ def is_crossed_face(coords, normal):
 def check_planarity(coords, normal, tolerance=1e-6):
     """Checks if all vertices of a face lie on the same plane."""
     if len(coords) <= 3:
-        return False, 0.0  # Triangles are always planar
-
+        return False, 0.0 # Triangles are always planar
+    
     v0 = coords[0]
     max_dist = 0.0
     for i in range(1, len(coords)):
         vec = (coords[i][0] - v0[0], coords[i][1] - v0[1], coords[i][2] - v0[2])
-        dist = abs(vec[0] * normal[0] + vec[1] * normal[1] + vec[2] * normal[2])
+        dist = abs(vec[0]*normal[0] + vec[1]*normal[1] + vec[2]*normal[2])
         max_dist = max(dist, max_dist)
-
+        
     return max_dist > tolerance, max_dist
 
 
 def find_closest_vertex_distance(unique_vertices, initial_estimate):
     """Calculates the absolute closest distance between any two distinct vertices."""
     if len(unique_vertices) < 2:
-        return float("inf")
-
-    d_min = initial_estimate if initial_estimate > 0 else float("inf")
+        return float('inf')
+    
+    d_min = initial_estimate if initial_estimate > 0 else float('inf')
     pts = sorted(unique_vertices, key=lambda p: p[0])
     n = len(pts)
-
+    
     for i in range(n):
         for j in range(i + 1, n):
             dx = pts[j][0] - pts[i][0]
@@ -256,34 +260,79 @@ def find_closest_vertex_distance(unique_vertices, initial_estimate):
                 break
             dy = pts[j][1] - pts[i][1]
             dz = pts[j][2] - pts[i][2]
-            dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+            dist = math.sqrt(dx*dx + dy*dy + dz*dz)
             if 0 < dist < d_min:
                 d_min = dist
     return d_min
 
+# File: offcheck.py
+# Version: 4.9
 
 def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
-    """The core consistency checking logic."""
+    """The core consistency checking logic with vertex, edge, and face type classification."""
+    
+    def is_regular_face(coords, tolerance=1e-5):
+        n = len(coords)
+        if n < 3:
+            return False
+        
+        # Compute edge lengths
+        lengths = []
+        for j in range(n):
+            v1 = coords[j]
+            v2 = coords[(j + 1) % n]
+            d = math.sqrt(sum((a - b)**2 for a, b in zip(v1, v2)))
+            lengths.append(d)
+        
+        # Check if all lengths are close to the mean
+        mean_l = sum(lengths) / n
+        if mean_l < 1e-12:
+            return False
+        for l in lengths:
+            if abs(l - mean_l) > tolerance:
+                return False
+                
+        # Compute corner angles (represented by cosine of angle)
+        cosines = []
+        for j in range(n):
+            v_prev = coords[j - 1]
+            v_curr = coords[j]
+            v_next = coords[(j + 1) % n]
+            
+            d1 = [v_prev[k] - v_curr[k] for k in range(3)]
+            d2 = [v_next[k] - v_curr[k] for k in range(3)]
+            
+            len1 = math.sqrt(sum(x**2 for x in d1))
+            len2 = math.sqrt(sum(x**2 for x in d2))
+            if len1 < 1e-12 or len2 < 1e-12:
+                return False
+                
+            dot = sum(x*y for x, y in zip(d1, d2))
+            cos_val = dot / (len1 * len2)
+            cos_val = max(-1.0, min(1.0, cos_val))
+            cosines.append(cos_val)
+            
+        mean_cos = sum(cosines) / n
+        for c in cosines:
+            if abs(c - mean_cos) > tolerance:
+                return False
+        return True
+
     try:
-        with open(filepath, "r") as f:
-            lines = [
-                line.strip()
-                for line in f
-                if line.strip() and not line.strip().startswith("#")
-            ]
+        with open(filepath, 'r') as f:
+            lines = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
     except (OSError, UnicodeDecodeError) as e:
         err = f"Error opening file: {e}"
         return (err, None) if return_stats else err
 
-    if not lines or not lines[0].startswith("OFF"):
+    if not lines or not lines[0].startswith('OFF'):
         err = "Error: Valid OFF header not found."
         return (err, None) if return_stats else err
 
-    header_idx = 1 if lines[0] == "OFF" else 0
+    header_idx = 1 if lines[0] == 'OFF' else 0
     count_line = lines[header_idx]
-    if header_idx == 0:
-        count_line = count_line[3:].strip()
-
+    if header_idx == 0: count_line = count_line[3:].strip()
+    
     try:
         counts = list(map(int, count_line.split()))
         num_vertices, num_faces = counts[0], counts[1]
@@ -295,9 +344,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     vertex_end_idx = data_start_idx + num_vertices
 
     if len(lines) < vertex_end_idx:
-        err = (
-            f"Error: Header claims {num_vertices} vertices, but file ends prematurely."
-        )
+        err = f"Error: Header claims {num_vertices} vertices, but file ends prematurely."
         return (err, None) if return_stats else err
 
     # --- 1. Parse Vertices ---
@@ -305,15 +352,15 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     vertex_positions = defaultdict(list)
     duplicate_coords_count = 0
     max_decimal_places = 0
-
+    
     for i in range(data_start_idx, vertex_end_idx):
         try:
             raw_parts = lines[i].split()[:3]
             for part in raw_parts:
-                if "." in part:
-                    dec_part = part.split(".")[1].split("e")[0].split("E")[0]
+                if '.' in part:
+                    dec_part = part.split('.')[1].split('e')[0].split('E')[0]
                     max_decimal_places = max(max_decimal_places, len(dec_part))
-
+            
             coords = tuple(map(float, raw_parts))
             vertices.append(coords)
             vertex_positions[coords].append(i - data_start_idx)
@@ -326,36 +373,37 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             duplicate_coords_count += 1
 
     # Calculate distance to origin for each vertex
-    origin_distances = [math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2) for v in vertices]
+    origin_distances = [math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in vertices]
     max_origin_dist = max(origin_distances) if origin_distances else 0.0
     min_origin_dist = min(origin_distances) if origin_distances else 0.0
 
     # --- 2. Parse Faces ---
     edge_dict = defaultdict(int)
     vertex_valence_map = [set() for _ in range(num_vertices)]
-    face_type_counts = defaultdict(int)
+    face_type_counts = defaultdict(int) 
     face_lines = lines[vertex_end_idx : vertex_end_idx + num_faces]
     zero_area_faces = []
     hemihedral_faces = []
     faces_with_repeats = []
-    crossed_faces = []
+    crossed_faces = [] 
     concave_faces = []
     non_planar_faces = []
-    min_face_area = float("inf")
-    shortest_edge_len = float("inf")
+    min_face_area = float('inf')
+    shortest_edge_len = float('inf')
     max_planar_err = 0.0
-    TOLERANCE = 1e-12
+    TOLERANCE = 1e-12 
 
     processed_face_count = 0
     parsed_faces = []
+    face_normals = []
+    face_areas = []
 
     for i, line in enumerate(face_lines):
         raw_parts = line.split()
-        if not raw_parts:
-            continue
+        if not raw_parts: continue
         try:
             n_v = int(raw_parts[0])
-            v_indices = list(map(int, raw_parts[1 : 1 + n_v]))
+            v_indices = list(map(int, raw_parts[1:1+n_v]))
         except ValueError:
             err = f"Error: Face {i} has non-integer indices."
             return (err, None) if return_stats else err
@@ -378,12 +426,12 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             if v_idx < 0 or v_idx >= num_vertices:
                 err = f"Error: Face {i} references invalid vertex index {v_idx}."
                 return (err, None) if return_stats else err
-
+            
             v1 = vertices[v_idx]
             face_coords.append(v1)
             v2 = vertices[v_next_idx]
             dist = math.sqrt(sum((a - b) ** 2 for a, b in zip(v1, v2)))
-            if dist > 0:
+            if dist > 0: 
                 shortest_edge_len = min(shortest_edge_len, dist)
 
             edge = tuple(sorted((v_idx, v_next_idx)))
@@ -399,23 +447,36 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             hemihedral_faces.append(i)
 
         normal, area = calculate_face_normal_and_area(face_coords)
+        face_normals.append(normal)
+        face_areas.append(area)
+
         if processed_face_count == 1 or area < min_face_area:
             min_face_area = area
-
-        if area < TOLERANCE:
+        
+        if area < TOLERANCE: 
             zero_area_faces.append(i)
         else:
             if is_crossed_face(face_coords, normal):
                 crossed_faces.append(i)
             if is_concave_face(face_coords, normal):
                 concave_faces.append(i)
-
+            
             # Using the stable normal of the face's convex hull for planarity checks
             hull_normal = get_convex_hull_normal(face_coords)
             is_np, err = check_planarity(face_coords, hull_normal)
             max_planar_err = max(max_planar_err, err)
             if is_np:
                 non_planar_faces.append(i)
+
+    # --- 2a. Determine Regular Faces Status ---
+    all_regular = True if processed_face_count > 0 else False
+    if processed_face_count > 0:
+        for i, v_indices in enumerate(parsed_faces):
+            face_coords = [vertices[idx] for idx in v_indices]
+            if not is_regular_face(face_coords):
+                all_regular = False
+                break
+    rf = "Yes" if all_regular else "No"
 
     # --- 3. Connected Components (Compound Parts) ---
     edge_to_faces = defaultdict(list)
@@ -454,7 +515,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
 
     boundary = [e for e, c in edge_dict.items() if c == 1]
     non_manifold = [e for e, c in edge_dict.items() if c > 2]
-
+    
     valence_distribution = defaultdict(int)
     for v_edges in vertex_valence_map:
         valence_distribution[len(v_edges)] += 1
@@ -484,10 +545,10 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         cx = sum(xs) / num_vertices
         cy = sum(ys) / num_vertices
         cz = sum(zs) / num_vertices
-
+        
         max_r_sq = 0.0
         for v in vertices:
-            r_sq = (v[0] - cx) ** 2 + (v[1] - cy) ** 2 + (v[2] - cz) ** 2
+            r_sq = (v[0] - cx)**2 + (v[1] - cy)**2 + (v[2] - cz)**2
             max_r_sq = max(max_r_sq, r_sq)
         circumradius = math.sqrt(max_r_sq) if max_r_sq > 0 else 1.0
     else:
@@ -507,10 +568,10 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     for (u, v), length in edge_lengths.items():
         adj_weighted[u].append((v, length))
         adj_weighted[v].append((u, length))
-
+        
     total_geom_dist = 0
     disconnected = False
-
+    
     for start in range(num_vertices):
         dist_map = {start: 0.0}
         pq = [(0.0, start)]
@@ -523,7 +584,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
                 if nbr not in dist_map or new_d < dist_map[nbr]:
                     dist_map[nbr] = new_d
                     heapq.heappush(pq, (new_d, nbr))
-
+        
         if len(dist_map) < num_vertices:
             disconnected = True
         for d_val in dist_map.values():
@@ -532,9 +593,89 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     if not disconnected and num_vertices > 1:
         wiener_index = total_geom_dist / 2
     else:
-        wiener_index = float("nan")
+        wiener_index = float('nan')
 
-    # --- 4. Symmetry Group and Order (Calling facetings_math) ---
+    # --- 3b. Determine Geometric Types ---
+    crossed_faces_set = set(crossed_faces)
+    concave_faces_set = set(concave_faces)
+    non_planar_faces_set = set(non_planar_faces)
+    zero_area_faces_set = set(zero_area_faces)
+    hemihedral_faces_set = set(hemihedral_faces)
+
+    # Vertex Type Classification
+    vertex_types = set()
+    for i in range(num_vertices):
+        v_desc = (
+            len(vertex_valence_map[i]),
+            round(origin_distances[i], 5),
+            tuple(sorted(round(edge_lengths[e], 5) for e in vertex_valence_map[i]))
+        )
+        vertex_types.add(v_desc)
+    tv = len(vertex_types)
+
+    # Edge Type Classification
+    edge_types = set()
+    for e in edge_dict:
+        dihedral_key = 0.0
+        incident_f = edge_to_faces[e]
+        if len(incident_f) == 2:
+            f1, f2 = incident_f
+            n1 = face_normals[f1]
+            n2 = face_normals[f2]
+            dot_prod = sum(a*b for a, b in zip(n1, n2))
+            dihedral_key = round(max(-1.0, min(1.0, abs(dot_prod))), 5)
+        else:
+            dihedral_key = float(len(incident_f))
+
+        e_desc = (
+            round(edge_lengths[e], 5),
+            len(incident_f),
+            dihedral_key,
+            tuple(sorted((len(vertex_valence_map[e[0]]), len(vertex_valence_map[e[1]]))))
+        )
+        edge_types.add(e_desc)
+    et = len(edge_types)
+
+    # Face Type Classification
+    face_types = set()
+    for i, v_indices in enumerate(parsed_faces):
+        n_v = len(v_indices)
+        f_desc = (
+            n_v,
+            round(face_areas[i] * (scale_factor**2), 5),
+            i in crossed_faces_set,
+            i in concave_faces_set,
+            i in non_planar_faces_set,
+            i in zero_area_faces_set,
+            i in hemihedral_faces_set,
+            tuple(sorted(round(edge_lengths[tuple(sorted((v_indices[j], v_indices[(j+1)%n_v])))] , 5) for j in range(n_v)))
+        )
+        face_types.add(f_desc)
+    ft = len(face_types)
+
+    # Polyhedron Classification
+    classification = ""
+    if tv == 1 and et == 1 and ft == 1:
+        classification = "Regular Polyhedron"
+    elif tv == 1 and rf == "Yes":
+        classification = "Uniform Polyhedron"
+    elif tv == 1 and ft == 1:
+        classification = "Noble Polyhedron"
+    elif tv == 1 and et == 1:
+        classification = "Quasi-Regular Polyhedron"
+    elif et == 1 and ft == 1:
+        classification = "Dual Quasi-Regular Polyhedron"
+    elif tv == 1:
+        classification = "Isohedral Polyhedron"
+    elif et == 1:
+        classification = "Isotoxal Polyhedron"
+    elif ft == 1:
+        classification = "Isogonal Polyhedron"
+
+    if classification and compound_parts > 1:
+        classification += " Compound"
+
+    # --- 4. Symmetry Group and Order (Calling math_utils) ---
     symmetry_order = ""
     symmetry_symbol = ""
     if run_symmetry:
@@ -542,37 +683,29 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         symmetry_symbol = "N/A"
         try:
             verts_np = np.array(vertices, dtype=np.float64)
-            symmetries = facetings_math.get_symmetry_group(verts_np)
+            symmetries = math_utils.get_symmetry_group(verts_np)
             symmetry_order = len(symmetries)
-
+            
             # Classify using the indices of the full group
             full_group_indices = list(range(symmetry_order))
-            classification = facetings_math.classify_subgroup(
-                full_group_indices, symmetries
-            )
-
+            classification_sym = math_utils.classify_subgroup(full_group_indices, symmetries)
+            
             # Extract the Schoenflies symbol from the parsed classification name (inside parentheses)
-            if "(" in classification:
-                symmetry_symbol = classification.split("(")[-1].rstrip(")")
+            if "(" in classification_sym:
+                symmetry_symbol = classification_sym.split("(")[-1].rstrip(")")
             else:
-                symmetry_symbol = classification
+                symmetry_symbol = classification_sym
         except (ValueError, TypeError, IndexError, AttributeError) as e:
             symmetry_order = "Error"
             symmetry_symbol = f"Error in analysis: {e}"
 
-
-
     def format_metric(val):
-        if val == float("inf") or val == 0 or math.isnan(val):
-            return "N/A"
-        if val < 1e-4:
-            return f"{val:.8e}"
-        s = f"{val:.8f}".rstrip("0")
-        return s + "0" if s.endswith(".") else s
+        if val == float('inf') or val == 0 or math.isnan(val): return "N/A"
+        if val < 1e-4: return f"{val:.8e}"
+        s = f"{val:.8f}".rstrip('0')
+        return s + "0" if s.endswith('.') else s
 
-    closest_vertex_dist = find_closest_vertex_distance(
-        list(vertex_positions.keys()), shortest_edge_len
-    )
+    closest_vertex_dist = find_closest_vertex_distance(list(vertex_positions.keys()), shortest_edge_len)
 
     disp_shortest_edge = format_metric(shortest_edge_len)
     disp_closest_vertex = format_metric(closest_vertex_dist)
@@ -583,12 +716,8 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
 
     face_comp_report = []
     for v_count in sorted(face_type_counts.keys()):
-        label = {3: "Triangles", 4: "Quads", 5: "Pentagons"}.get(
-            v_count, f"{v_count}-gons"
-        )
-        face_comp_report.append(
-            f"{label:<15} ({v_count} vts): {face_type_counts[v_count]}"
-        )
+        label = {3: "Triangles", 4: "Quads", 5: "Pentagons"}.get(v_count, f"{v_count}-gons")
+        face_comp_report.append(f"{label:<15} ({v_count} vts): {face_type_counts[v_count]}")
 
     valence_report = []
     for val in sorted(valence_distribution.keys()):
@@ -600,63 +729,52 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         f"Edges: {len(edge_dict)} | Genus: {genus}",
     ]
     if run_symmetry:
-        report.append(
-            f"Symmetry Group:               {symmetry_symbol} (order {symmetry_order})"
-        )
-    report.extend(
-        [
-            f"V-E-F:                        {num_vertices}-{len(edge_dict)}-{actual_num_faces}",
-            f"Compound Parts:               {compound_parts}",
-            f"Coordinate Precision:         {max_decimal_places} decimal places",
-            f"Wiener Index (Geom):          {disp_wiener}",
-            "-" * 45,
-            "FACE COMPOSITION:",
-            *face_comp_report,
-            "-" * 45,
-            "VERTEX VALENCE DISTRIBUTION:",
-            *valence_report,
-            "-" * 45,
-            f"Duplicate Coordinates:         {duplicate_coords_count} sets",
-            f"Faces w/ Repeat Indices:       {len(faces_with_repeats)}",
-            f"Crossed Faces:                 {len(crossed_faces)}",
-            f"Concave Faces:                 {len(concave_faces)}",
-            f"Non-Planar Faces:              {len(non_planar_faces)}",
-            f"Max Planarity Error:           {max_planar_err:.8e}",
-            f"Zero-Area Faces:               {len(zero_area_faces)}",
-            f"Hemihedral Faces:              {len(hemihedral_faces)}",
-            f"Smallest Face Area:            {disp_min_area}",
-            f"Shortest Edge Length:          {disp_shortest_edge}",
-            f"Closest Vertex Distance:       {disp_closest_vertex}",
-            f"Max Vertex Dist (Origin):      {disp_max_origin_dist}",
-            f"Min Vertex Dist (Origin):      {disp_min_origin_dist}",
-            "-" * 45,
-            f"Manifold Edges:                {len(edge_dict) - len(boundary) - len(non_manifold)}",
-            f"Boundary Edges (1 face):       {len(boundary)}",
-            f"Non-Manifold Edges (>2 faces): {len(non_manifold)}",
-            "-" * 45,
-        ]
-    )
-
+        report.append(f"Symmetry Group:               {symmetry_symbol} (order {symmetry_order})")
+    report.extend([
+        f"V-E-F:                        {num_vertices}-{len(edge_dict)}-{actual_num_faces}",
+        f"T(V-E-F):                     {tv}-{et}-{ft}",
+        f"Compound Parts:               {compound_parts}",
+        f"Coordinate Precision:         {max_decimal_places} decimal places",
+        f"Wiener Index (Geom):          {disp_wiener}",
+        "-" * 45,
+        "FACE COMPOSITION:",
+        *face_comp_report,
+        "-" * 45,
+        "VERTEX VALENCE DISTRIBUTION:",
+        *valence_report,
+        "-" * 45,
+        f"Regular Faces:                 {rf}",
+        f"Duplicate Coordinates:         {duplicate_coords_count} sets",
+        f"Faces w/ Repeat Indices:       {len(faces_with_repeats)}",
+        f"Crossed Faces:                 {len(crossed_faces)}",
+        f"Concave Faces:                 {len(concave_faces)}",
+        f"Non-Planar Faces:              {len(non_planar_faces)}",
+        f"Max Planarity Error:           {max_planar_err:.8e}",
+        f"Zero-Area Faces:               {len(zero_area_faces)}",
+        f"Hemihedral Faces:              {len(hemihedral_faces)}",
+        f"Smallest Face Area:            {disp_min_area}",
+        f"Shortest Edge Length:          {disp_shortest_edge}",
+        f"Closest Vertex Distance:       {disp_closest_vertex}",
+        f"Max Vertex Dist (Origin):      {disp_max_origin_dist}",
+        f"Min Vertex Dist (Origin):      {disp_min_origin_dist}",
+        "-" * 45,
+        f"Manifold Edges:                {len(edge_dict) - len(boundary) - len(non_manifold)}",
+        f"Boundary Edges (1 face):       {len(boundary)}",
+        f"Non-Manifold Edges (>2 faces): {len(non_manifold)}",
+        "-" * 45
+    ])
+    
     issues = []
-    if num_faces == 0:
-        issues.append("Header contains zero faces")
-    elif processed_face_count == 0:
-        issues.append("No valid face definitions found")
-    if duplicate_coords_count:
-        issues.append("Duplicate vertex coordinates")
-    if faces_with_repeats:
-        issues.append("Faces with repeated indices")
-    if non_planar_faces:
-        issues.append("Non-planar faces (Quads+)")
-    if zero_area_faces:
-        issues.append("Zero-area (degenerate) faces")
-    if hemihedral_faces:
-        issues.append("Hemihedral faces")
-    if boundary:
-        issues.append("Open boundaries (holes)")
-    if non_manifold:
-        issues.append("Non-manifold geometry")
-
+    if num_faces == 0: issues.append("Header contains zero faces")
+    elif processed_face_count == 0: issues.append("No valid face definitions found")
+    if duplicate_coords_count: issues.append("Duplicate vertex coordinates")
+    if faces_with_repeats: issues.append("Faces with repeated indices")
+    if non_planar_faces: issues.append("Non-planar faces (Quads+)")
+    if zero_area_faces: issues.append("Zero-area (degenerate) faces")
+    if hemihedral_faces: issues.append("Hemihedral faces")
+    if boundary: issues.append("Open boundaries (holes)")
+    if non_manifold: issues.append("Non-manifold geometry")
+    
     if not issues and processed_face_count > 0:
         report.append("CONCLUSION: Perfectly closed manifold mesh.")
     else:
@@ -664,8 +782,10 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         if not issues and processed_face_count == 0:
             report.append(" - Malformed file: No faces processed.")
         else:
-            for issue in issues:
-                report.append(f" - {issue}")
+            for issue in issues: report.append(f" - {issue}")
+        
+    if classification:
+        report.append(classification)
 
     if return_stats:
         stats = {
@@ -675,15 +795,15 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             "Edges": len(edge_dict),
             "Genus": genus,
             "V-E-F": f"{num_vertices}-{len(edge_dict)}-{actual_num_faces}",
+            "T(V-E-F)": f"{tv}-{et}-{ft}",
             "Concentration": gonality,  # Maintain name or leave empty
             "Gonality": gonality,
             "Valence": shared_valence,
-            "Symmetry Group": f"{symmetry_symbol} (order {symmetry_order})"
-            if (run_symmetry and symmetry_symbol)
-            else "",
+            "Symmetry Group": f"{symmetry_symbol} (order {symmetry_order})" if (run_symmetry and symmetry_symbol) else "",
             "Compound Parts": compound_parts,
             "Coordinate Precision": max_decimal_places,
             "Wiener Index (Geom)": wiener_index,
+            "Regular Faces": rf,
             "Duplicate Coords": duplicate_coords_count,
             "Repeat Indices": len(faces_with_repeats),
             "Crossed Faces": len(crossed_faces),
@@ -695,39 +815,34 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             "Smallest Face Area": min_face_area,
             "Shortest Edge Length": shortest_edge_len,
             "Closest Vertex Distance": closest_vertex_dist,
-            "Max Vertex Dist (Origin)": max_origin_dist
-            if origin_distances
-            else float("nan"),
-            "Min Vertex Dist (Origin)": min_origin_dist
-            if origin_distances
-            else float("nan"),
+            "Max Vertex Dist (Origin)": max_origin_dist if origin_distances else float('nan'),
+            "Min Vertex Dist (Origin)": min_origin_dist if origin_distances else float('nan'),
             "Manifold Edges": len(edge_dict) - len(boundary) - len(non_manifold),
             "Boundary Edges": len(boundary),
             "Non-Manifold Edges": len(non_manifold),
-            "Detail": "; ".join(issues)
-            if issues
-            else ("No faces processed." if processed_face_count == 0 else ""),
+            "Detail": "; ".join(issues) if issues else ("No faces processed." if processed_face_count == 0 else ""),
         }
-
+        
         for v_count, count in face_type_counts.items():
             stats[f"Faces ({v_count})"] = count
         for val, count in valence_distribution.items():
             stats[f"Valence ({val})"] = count
-
+            
         return "\n".join(report), stats
 
     return "\n".join(report)
 
 
 class OFFCheckerGUI:
+    # Version: 4.6
 
     def __init__(self, root):
         self.root = root
         self.root.title("OFF Quality Checker")
-
+        
         # 1. Position on the left and set width to 560 to resolve the narrow text clipping
         self.root.geometry("560x750+30+30")
-
+        
         # 2. Hide window during construction to block premature focus grabbing
         self.root.withdraw()
         self.set_icon()
@@ -738,36 +853,23 @@ class OFFCheckerGUI:
         self.root.wm_attributes("-topmost", False)
 
         # 4. Initialize layout components while window is withdrawn
-        self.label = tk.Label(
-            root,
-            text="DRAG & DROP OFF FILE HERE",
-            font=("Arial", 10, "bold"),
-            pady=15,
-            fg="#555",
-        )
+        self.label = tk.Label(root, text="DRAG & DROP OFF FILE HERE", 
+                              font=("Arial", 10, "bold"), pady=15, fg="#555")
         self.label.pack()
 
-        self.btn = tk.Button(
-            root, text="Browse File Manually", command=self.browse_file, padx=20
-        )
+        self.btn = tk.Button(root, text="Browse File Manually", command=self.browse_file, padx=20)
         self.btn.pack(pady=5)
 
         self.batch_var = tk.BooleanVar(value=False)
-        self.batch_chk = tk.Checkbutton(
-            root, text="Batch Mode", variable=self.batch_var
-        )
+        self.batch_chk = tk.Checkbutton(root, text="Batch Mode", variable=self.batch_var)
         self.batch_chk.pack(pady=5)
 
         self.sym_var = tk.BooleanVar(value=False)
-        self.sym_chk = tk.Checkbutton(
-            root, text="Enable Symmetry Check", variable=self.sym_var
-        )
+        self.sym_chk = tk.Checkbutton(root, text="Enable Symmetry Check", variable=self.sym_var)
         self.sym_chk.pack(pady=5)
 
         # Adjusted text width from 80 to 68 to prevent boundary overflows
-        self.text_area = scrolledtext.ScrolledText(
-            root, width=68, height=1, font=("Consolas", 10)
-        )
+        self.text_area = scrolledtext.ScrolledText(root, width=68, height=1, font=("Consolas", 10))
         self.text_area.pack(pady=10, padx=10, expand=True, fill=tk.BOTH)
 
         if sys.platform == "win32" and windnd:
@@ -787,26 +889,26 @@ class OFFCheckerGUI:
         try:
             # Standard Tkinter approach
             self.root.iconbitmap(icon_path)
-
+            
             if sys.platform == "win32":
                 # Heavy-duty Win32 API override via ctypes
                 hwnd = self.root.winfo_id()
                 user32 = ctypes.windll.user32
-
+                
                 # Load icon (LR_LOADFROMFILE = 0x10, IMAGE_ICON = 1)
                 hicon = user32.LoadImageW(0, icon_path, 1, 0, 0, 0x00000010)
-
+                
                 if hicon:
                     # Set icon for current window (WM_SETICON = 0x80)
-                    user32.SendMessageW(hwnd, 0x0080, 0, hicon)  # ICON_SMALL
-                    user32.SendMessageW(hwnd, 0x0080, 1, hicon)  # ICON_BIG
-
+                    user32.SendMessageW(hwnd, 0x0080, 0, hicon) # ICON_SMALL
+                    user32.SendMessageW(hwnd, 0x0080, 1, hicon) # ICON_BIG
+                    
                     # Set icon for the Window Class (more persistent)
                     # GCLP_HICON = -14, GCLP_HICONSM = -34
-                    if ctypes.sizeof(ctypes.c_void_p) == 8:  # 64-bit
+                    if ctypes.sizeof(ctypes.c_void_p) == 8: # 64-bit
                         user32.SetClassLongPtrW(hwnd, -14, hicon)
                         user32.SetClassLongPtrW(hwnd, -34, hicon)
-                    else:  # 32-bit
+                    else: # 32-bit
                         user32.SetClassLongW(hwnd, -14, hicon)
                         user32.SetClassLongW(hwnd, -34, hicon)
         except (AttributeError, tk.TclError, OSError):
@@ -817,78 +919,49 @@ class OFFCheckerGUI:
             raw_file = files[0]
             if isinstance(raw_file, bytes):
                 try:
-                    filepath = raw_file.decode("utf-8")
+                    filepath = raw_file.decode('utf-8')
                 except UnicodeDecodeError:
-                    filepath = raw_file.decode("gbk")
+                    filepath = raw_file.decode('gbk')
             else:
                 filepath = str(raw_file)
             self.process_file(filepath)
 
     def browse_file(self):
-        file_path = filedialog.askopenfilename(
-            filetypes=[("OFF files", "*.off"), ("All files", "*.*")]
-        )
+        file_path = filedialog.askopenfilename(filetypes=[("OFF files", "*.off"), ("All files", "*.*")])
         if file_path:
             self.process_file(file_path)
 
     def process_file(self, filepath):
         self.text_area.delete(1.0, tk.END)
         sym_enabled = self.sym_var.get()
-
+        
         if self.batch_var.get():
             folder = os.path.dirname(os.path.abspath(filepath))
-            off_files = [
-                os.path.join(folder, f)
-                for f in os.listdir(folder)
-                if f.lower().endswith(".off")
-            ]
+            off_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith('.off')]
             if not off_files:
                 self.text_area.insert(tk.END, "No OFF files found in the directory.")
                 return
 
-            csv_path = os.path.join(folder, "offcheck.csv")
-
+            csv_path = os.path.join(folder, 'offcheck.csv')
+            
             base_headers = [
-                "Filename",
-                "Vertices",
-                "Faces",
-                "Edges",
-                "Genus",
-                "V-E-F",
-                "Gonality",
-                "Valence",
-                "Symmetry Group",
-                "Compound Parts",
-                "Coordinate Precision",
+                "Filename", "Vertices", "Faces", "Edges", "Genus", "V-E-F", "Gonality", "Valence",
+                "Symmetry Group", "Compound Parts", "Coordinate Precision",
                 "Wiener Index (Geom)",
-                "Duplicate Coords",
-                "Repeat Indices",
-                "Crossed Faces",
-                "Concave Faces",
-                "Non-Planar Faces",
-                "Max Planarity Error",
-                "Zero-Area Faces",
-                "Hemihedral Faces",
-                "Smallest Face Area",
-                "Shortest Edge Length",
-                "Closest Vertex Distance",
-                "Max Vertex Dist (Origin)",
-                "Min Vertex Dist (Origin)",
-                "Manifold Edges",
-                "Boundary Edges",
-                "Non-Manifold Edges",
-                "Detail",
+                "Duplicate Coords", "Repeat Indices", "Crossed Faces", "Concave Faces", "Non-Planar Faces",
+                "Max Planarity Error", "Zero-Area Faces", "Hemihedral Faces", "Smallest Face Area",
+                "Shortest Edge Length", "Closest Vertex Distance", 
+                "Max Vertex Dist (Origin)", "Min Vertex Dist (Origin)",
+                "Manifold Edges", "Boundary Edges", "Non-Manifold Edges", "Detail"
             ]
 
             results = []
             dynamic_face_keys = set()
             dynamic_valence_keys = set()
             success_count = 0
-
+            
             for fpath in sorted(off_files):
-                res, stats = verify_off_logic(
-                    fpath, return_stats=True, run_symmetry=sym_enabled
-                )
+                res, stats = verify_off_logic(fpath, return_stats=True, run_symmetry=sym_enabled)
                 if stats is None:
                     stats = {h: "" for h in base_headers}
                     stats["Filename"] = os.path.basename(fpath)
@@ -903,22 +976,22 @@ class OFFCheckerGUI:
                 success_count += 1
 
             def extract_num(key_str):
-                m = re.search(r"\d+", key_str)
+                m = re.search(r'\d+', key_str)
                 return int(m.group()) if m else 999999
 
             sorted_face_headers = sorted(dynamic_face_keys, key=extract_num)
             sorted_valence_headers = sorted(dynamic_valence_keys, key=extract_num)
-
+            
             headers = base_headers + sorted_face_headers + sorted_valence_headers
 
             try:
-                with open(csv_path, "w", newline="", encoding="utf-8") as csvfile:
+                with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
                     writer = csv.DictWriter(csvfile, fieldnames=headers)
                     writer.writeheader()
                     for row in results:
                         row_data = {h: row.get(h, "") for h in headers}
                         writer.writerow(row_data)
-
+                
                 summary = [
                     "BATCH MODE COMPLETE",
                     f"Folder: {folder}",
@@ -935,20 +1008,11 @@ class OFFCheckerGUI:
         else:
             result = verify_off_logic(filepath, run_symmetry=sym_enabled)
             self.text_area.insert(tk.END, result)
-            line_count = result.count("\n") + 1
+            line_count = result.count('\n') + 1
             self.text_area.configure(height=line_count)
 
 
-def main():
-    root = tk.Tk()
-    try:
-        app = OFFCheckerGUI(root)
-    except AttributeError as error:
-        raise ValueError(
-            "This tool requires a MS Windows. Did you try to run this on another OS? "
-        ) from error
-    root.mainloop()
-
-
 if __name__ == "__main__":
-    main()
+    root = tk.Tk()
+    app = OFFCheckerGUI(root)
+    root.mainloop()
