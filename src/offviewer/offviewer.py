@@ -66,16 +66,13 @@ bg_run_id = [0]
 try:
     import offcheck
 except ModuleNotFoundError:
-    try:
-        from offviewer import offcheck
-    except ModuleNotFoundError:
-        _spec = importlib.util.spec_from_file_location("offcheck", "offcheck.py")
-        if _spec is None:
-            print("Cannot import offcheck, checker unavailable")
-            offcheck = None
-        else:
-            offcheck = importlib.util.module_from_spec(_spec)
-            _spec.loader.exec_module(offcheck)
+    _spec = importlib.util.spec_from_file_location("offcheck", "offcheck.py")
+    if _spec is None:
+        print("Cannot import offcheck, checker unavailable")
+        offcheck = None
+    else:
+        offcheck = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(offcheck)
 
 
 def format_sort_value(val):

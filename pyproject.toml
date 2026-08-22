@@ -20,7 +20,7 @@ dependencies = [
 
 [project.scripts]
 facetings = "facetings:main"
-offchecker = "offviewer.offcheck:main"
+offchecker = "offcheck:main"
 offviewer = "offviewer:main"
 
 [build-system]
