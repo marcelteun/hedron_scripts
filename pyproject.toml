@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-facetings = "offviewer.facetings:main"
+facetings = "facetings:main"
 offchecker = "offviewer.offcheck:main"
 offviewer = "offviewer:main"
 

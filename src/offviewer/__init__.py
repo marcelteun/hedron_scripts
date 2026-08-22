@@ -1,5 +1,1 @@
-from offviewer import offviewer
-
-
-def main() -> None:
-    offviewer.main()
+from offviewer.offviewer import *

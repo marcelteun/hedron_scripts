@@ -59,7 +59,7 @@ try:
     import facetings_renderer
 except ModuleNotFoundError:
     try:
-        from offviewer import facetings_renderer
+        from facetings import facetings_renderer
     except ModuleNotFoundError:
         _spec = importlib.util.spec_from_file_location("facetings_renderer", "facetings_renderer.py")
         if _spec is None:
