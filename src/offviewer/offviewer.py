@@ -59,12 +59,10 @@ bg_csv_ready = [False]
 bg_csv_path = [None]
 bg_run_id = [0]
 
-# Import package from the same package as this one.
-# I would just like to use the import, but Jim isn't using this package as a package, and as a
-# consequence, I need to do something special to ensure that it still works for him to prevent
-# conflicts when he sends updates.
+# This import looks a bit strange, but Jim isn't using the package and to prevent too many conflicts
+# with integrating updates, it looks like the way it is. conflicts when he sends updates.
 try:
-    import offcheck
+    from offviewer.lib import offcheck
 except ModuleNotFoundError:
     _spec = importlib.util.spec_from_file_location("offcheck", "offcheck.py")
     if _spec is None:

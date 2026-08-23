@@ -40,12 +40,10 @@ try:
 except ImportError:
     HAS_PIL = False
 
-# Import module from the same package as this one.
-# I would just like to use the import, but Jim isn't using this package as a package, and as a
-# consequence, I need to do something special to ensure that it still works for him to prevent
-# conflicts when he sends updates.
+# These imports look a bit strange, but Jim isn't using the package and to prevent too many
+# conflicts with integrating updates, it looks like the way it is. conflicts when he sends updates.
 try:
-    import math_utils
+    from offviewer.lib import math_utils
 except ModuleNotFoundError:
     _spec = importlib.util.spec_from_file_location("math_utils", "math_utils.py")
     if _spec is None:
@@ -56,18 +54,15 @@ except ModuleNotFoundError:
         _spec.loader.exec_module(math_utils)
 
 try:
-    import facetings_renderer
+    from offviewer.lib import facetings_renderer
 except ModuleNotFoundError:
-    try:
-        from facetings import facetings_renderer
-    except ModuleNotFoundError:
-        _spec = importlib.util.spec_from_file_location("facetings_renderer", "facetings_renderer.py")
-        if _spec is None:
-            print("Cannot import facetings_renderer, library unavailable")
-            facetings_renderer = None
-        else:
-            facetings_renderer = importlib.util.module_from_spec(_spec)
-            _spec.loader.exec_module(facetings_renderer)
+    _spec = importlib.util.spec_from_file_location("facetings_renderer", "facetings_renderer.py")
+    if _spec is None:
+        print("Cannot import facetings_renderer, library unavailable")
+        facetings_renderer = None
+    else:
+        facetings_renderer = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(facetings_renderer)
 
 # Cache for subgroup classification to avoid redundant matrix exponentiations
 _classification_cache = {}

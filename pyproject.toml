@@ -1,10 +1,11 @@
 [project]
 name = "offviewer"
-version = "0.2.0"
+version = "0.4.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
-    { name = "Marcel Tünnissen", email = "marcelteun@gmail.com" }
+    { name = "Jim McNeill" },
+    { name = "Marcel Tünnissen", email = "marcelteun@gmail.com" },
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -19,9 +20,9 @@ dependencies = [
 ]
 
 [project.scripts]
-facetings = "facetings:main"
-offchecker = "offcheck:main"
-offviewer = "offviewer:main"
+facetings = "offviewer.facetings:main"
+offchecker = "offviewer.offchecker:main"
+offviewer = "offviewer.offviewer:main"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
