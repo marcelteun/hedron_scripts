@@ -43,7 +43,7 @@ except ImportError:
 # These imports look a bit strange, but Jim isn't using the package and to prevent too many
 # conflicts with integrating updates, it looks like the way it is. conflicts when he sends updates.
 try:
-    from offviewer.lib import math_utils
+    from hedron_scripts.lib import math_utils
 except ModuleNotFoundError:
     _spec = importlib.util.spec_from_file_location("math_utils", "math_utils.py")
     if _spec is None:
@@ -54,7 +54,7 @@ except ModuleNotFoundError:
         _spec.loader.exec_module(math_utils)
 
 try:
-    from offviewer.lib import facetings_renderer
+    from hedron_scripts.lib import facetings_renderer
 except ModuleNotFoundError:
     _spec = importlib.util.spec_from_file_location("facetings_renderer", "facetings_renderer.py")
     if _spec is None:
