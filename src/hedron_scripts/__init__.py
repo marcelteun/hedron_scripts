@@ -1,1 +1,1 @@
-from offviewer.offviewer import *
+from hedron_scripts import lib

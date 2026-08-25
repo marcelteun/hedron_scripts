@@ -20,9 +20,9 @@ dependencies = [
 ]
 
 [project.scripts]
-facetings = "offviewer.facetings:main"
-offchecker = "offviewer.offchecker:main"
-offviewer = "offviewer.offviewer:main"
+facetings = "hedron_scripts.facetings:main"
+offchecker = "hedron_scripts.offchecker:main"
+offviewer = "hedron_scripts.offviewer:main"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]

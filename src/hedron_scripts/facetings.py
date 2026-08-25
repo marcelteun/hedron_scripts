@@ -1,4 +1,4 @@
-from offviewer.lib.facetings import main
+from hedron_scripts.lib.facetings import main
 
 
 if __name__ == "__main__":

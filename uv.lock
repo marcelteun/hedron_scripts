@@ -27,6 +27,41 @@ wheels = [
 ]
 
 [[package]]
+name = "hedron-scripts"
+version = "0.4.1"
+source = { editable = "." }
+dependencies = [
+    { name = "moderngl" },
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "pygame" },
+    { name = "scipy" },
+    { name = "tkinterdnd2" },
+    { name = "windnd" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "moderngl", specifier = ">=5.12.0" },
+    { name = "numba", specifier = ">=0.67.0" },
+    { name = "numpy", specifier = ">=2.5.2" },
+    { name = "pillow", specifier = ">=12.3.0" },
+    { name = "pygame", specifier = ">=2.6.1" },
+    { name = "scipy", specifier = ">=1.18.0" },
+    { name = "tkinterdnd2", specifier = ">=0.6.2" },
+    { name = "windnd", specifier = ">=1.0.7" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.16.3" }]
+
+[[package]]
 name = "llvmlite"
 version = "0.49.0"
 source = { registry = "https://pypi.org/simple" }
@@ -179,41 +214,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/18/195d6b86cd72dbbc501edfa778005fa6b87afd34c153e46028cd3a0938f4/numpy-2.5.2-cp315-cp315t-win_amd64.whl", hash = "sha256:e5651f3f87add730ee6608d915009e19c911fba0cb000c7e3ea994b7d768eb12", size = 12782559, upload-time = "2026-08-09T13:48:21.023Z" },
     { url = "https://files.pythonhosted.org/packages/b4/07/458c344f0f0c178f4481dad5cca790626ffe4c34eabf9467069d06ee4999/numpy-2.5.2-cp315-cp315t-win_arm64.whl", hash = "sha256:5f8e00be2ec6f45f4e8a41a527f68d44a7d96fee92a650e4d8b1326f77f61e6e", size = 10748103, upload-time = "2026-08-09T13:48:24.21Z" },
 ]
-
-[[package]]
-name = "offviewer"
-version = "0.4.0"
-source = { editable = "." }
-dependencies = [
-    { name = "moderngl" },
-    { name = "numba" },
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "pygame" },
-    { name = "scipy" },
-    { name = "tkinterdnd2" },
-    { name = "windnd" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "moderngl", specifier = ">=5.12.0" },
-    { name = "numba", specifier = ">=0.67.0" },
-    { name = "numpy", specifier = ">=2.5.2" },
-    { name = "pillow", specifier = ">=12.3.0" },
-    { name = "pygame", specifier = ">=2.6.1" },
-    { name = "scipy", specifier = ">=1.18.0" },
-    { name = "tkinterdnd2", specifier = ">=0.6.2" },
-    { name = "windnd", specifier = ">=1.0.7" },
-]
-
-[package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.16.3" }]
 
 [[package]]
 name = "pillow"

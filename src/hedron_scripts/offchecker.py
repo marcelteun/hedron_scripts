@@ -1,4 +1,4 @@
-from offviewer.lib.offcheck import main
+from hedron_scripts.lib.offcheck import main
 
 
 if __name__ == "__main__":

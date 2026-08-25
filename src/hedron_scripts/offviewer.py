@@ -62,7 +62,7 @@ bg_run_id = [0]
 # This import looks a bit strange, but Jim isn't using the package and to prevent too many conflicts
 # with integrating updates, it looks like the way it is. conflicts when he sends updates.
 try:
-    from offviewer.lib import offcheck
+    from hedron_scripts.lib import offcheck
 except ModuleNotFoundError:
     _spec = importlib.util.spec_from_file_location("offcheck", "offcheck.py")
     if _spec is None:
