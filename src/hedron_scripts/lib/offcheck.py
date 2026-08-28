@@ -13,7 +13,6 @@ Change log:
 import csv
 import ctypes
 import heapq
-import importlib.util
 import math
 import os
 import re
@@ -27,15 +26,11 @@ import numpy as np
 # This import looks a bit strange, but Jim isn't using the package and to prevent too many conflicts
 # with integrating updates, it looks like the way it is. conflicts when he sends updates.
 try:
+    # 1. Package mode (for users who have hedron_scripts installed)
     from hedron_scripts.lib import math_utils
 except ModuleNotFoundError:
-    _spec = importlib.util.spec_from_file_location("math_utils", "math_utils.py")
-    if _spec is None:
-        print("Cannot import math_utils, library unavailable")
-        math_utils = None
-    else:
-        math_utils = importlib.util.module_from_spec(_spec)
-        _spec.loader.exec_module(math_utils)
+    # 2. Standalone mode (for running directly from source)
+    import math_utils
 
 # Conditionally import windnd based on OS
 if sys.platform == "win32":

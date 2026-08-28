@@ -42,7 +42,6 @@ Change log (debugging not included):
 import csv
 import fnmatch
 import hashlib
-import importlib.util
 import json
 import math
 import os
@@ -103,15 +102,11 @@ if _parent_dir not in sys.path:
     sys.path.insert(0, _parent_dir)
 
 try:
+    # 1. Package mode (for users who have hedron_scripts installed)
     from hedron_scripts.lib import offcheck
 except ModuleNotFoundError:
-    _spec = importlib.util.spec_from_file_location("offcheck", "offcheck.py")
-    if _spec is None:
-        print("Cannot import offcheck, checker unavailable")
-        offcheck = None
-    else:
-        offcheck = importlib.util.module_from_spec(_spec)
-        _spec.loader.exec_module(offcheck)
+    # 2. Standalone mode (for running directly from source)
+    import offcheck
 
 
 def format_sort_value(val):
