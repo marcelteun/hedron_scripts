@@ -27,7 +27,7 @@ import numpy as np
 # This import looks a bit strange, but Jim isn't using the package and to prevent too many conflicts
 # with integrating updates, it looks like the way it is. conflicts when he sends updates.
 try:
-    from offviewer.lib import math_utils
+    from hedron_scripts.lib import math_utils
 except ModuleNotFoundError:
     _spec = importlib.util.spec_from_file_location("math_utils", "math_utils.py")
     if _spec is None:

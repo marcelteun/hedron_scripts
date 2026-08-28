@@ -26,17 +26,17 @@ have a small tolerance built in.
 - Files offcheck.py and facetings_math.py are required to be in the same folder as this file.
 Change log (debugging not included):
 140826 - The path and 'search' at the top of the grid screen now work.  Search accepts * and ?
-       - Symmetry is enabled in the offcheck link.  See variable below to switch it off if required.  
+       - Symmetry is enabled in the offcheck link.  See variable below to switch it off if required.
        - 'f' mode on the enlarged view shows coplanar faces to the focus face as translucent.  Use ALPHA to control.
        - 'f' now cycles through face types rather than all faces
-       - 'e' now also works as an edge on/off switch in grid view 
-150826 - added '-' to search box to mean the opposite of the rest of the input eg '-*a*' anything that does not contain an 'a'.       
+       - 'e' now also works as an edge on/off switch in grid view
+150826 - added '-' to search box to mean the opposite of the rest of the input eg '-*a*' anything that does not contain an 'a'.
        - 'v' now cycles through vertex types rather than all vertices
-190826 - 'c' added to enlarged mode to cycle through parts of a compound   
+190826 - 'c' added to enlarged mode to cycle through parts of a compound
        - Refresh added to Grid view.  Subfolder sorting and scrolling added.
 270826 - external_tools.json added so right click is configurable and not machine specific
-       - Caching added to speed up display 
-       - Polling of focus folder added to detect new files       
+       - Caching added to speed up display
+       - Polling of focus folder added to detect new files
 """
 
 import csv
@@ -101,7 +101,7 @@ if _parent_dir not in sys.path:
     sys.path.insert(0, _parent_dir)
 
 try:
-    from offviewer.lib import offcheck
+    from hedron_scripts.lib import offcheck
 except ModuleNotFoundError:
     _spec = importlib.util.spec_from_file_location("offcheck", "offcheck.py")
     if _spec is None:
