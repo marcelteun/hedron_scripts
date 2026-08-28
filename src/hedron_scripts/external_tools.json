@@ -1,0 +1,37 @@
+# The programs listed below will be added to the right click menu.  
+# Note that back slashes must be doubled in the paths.
+[
+    {
+        "prompt": "Edit in Notepad++",
+        "program": "C:\\Program Files (x86)\\Notepad++\\notepad++.exe"
+    },
+    {
+        "prompt": "Edit in Stella",
+        "program": "C:\\Program Files\\Stella4D\\Stella4D.exe"
+    },
+{
+		"prompt": "Clean with Offtidy",
+		"program": "py",
+		"args": ["C:\\Users\\jim\\Documents\\Data\\Maths\\python\\offtidy.py"]
+	},
+	{
+		"prompt": "Open in Leonardo",
+		"program": "py",
+		"args": ["-3.10", "C:\\Users\\jim\\Documents\\Data\\Maths\\python\\leonardo.py"]
+	},
+	{
+		"prompt": "Open in Zonohedra",
+		"program": "py",
+		"args": ["-3.10", "C:\\Users\\jim\\Documents\\Data\\Maths\\python\\zonohedra2.py", "-p"]
+	},
+	{
+		"prompt": "Open in Radial Inversion",
+		"program": "py",
+		"args": ["-3.10", "C:\\Users\\jim\\Documents\\Data\\Maths\\python\\radial-inversion.py"]
+	},
+    {
+        "prompt": "Open in Gear Sphere",
+        "program": "py",
+        "args": ["-3.10", "C:\\Users\\jim\\Documents\\Data\\Maths\\python\\gear_sphere310.py"]
+    }
+]

@@ -27,7 +27,7 @@ import numpy as np
 # This import looks a bit strange, but Jim isn't using the package and to prevent too many conflicts
 # with integrating updates, it looks like the way it is. conflicts when he sends updates.
 try:
-    from hedron_scripts.lib import math_utils
+    from offviewer.lib import math_utils
 except ModuleNotFoundError:
     _spec = importlib.util.spec_from_file_location("math_utils", "math_utils.py")
     if _spec is None:
@@ -43,11 +43,6 @@ if sys.platform == "win32":
 else:
     windnd = None
 
-# File: offcheck.py
-# Version: 5.0
-
-# File: offcheck.py
-# Version: 5.1
 
 def get_convex_hull_normal(coords):
     """Computes a stable plane normal by finding the 2D convex hull of projected 3D coordinates."""
@@ -123,63 +118,153 @@ def get_convex_hull_normal(coords):
     return tuple(hull_normal)
 
 
+# Version: 5.4
 def calculate_face_normal_and_area(coords):
-    """Calculates the area and the stable plane normal of a 3D polygon, handling self-intersections for absolute area."""
+    """Calculates the area and the stable plane normal of a 3D polygon, handling self-intersections robustly via triangulation."""
     if len(coords) < 3:
-        return (0, 0, 0), 0.0
+        return (0.0, 0.0, 1.0), 0.0
 
-    # Compute normal robustly using PCA of the convex hull to avoid Newell cancellation
     normal = get_convex_hull_normal(coords)
 
-    # Helper to project 3D coordinates to 2D isometry
-    def project_to_2d_isometry(pts, n_vec):
-        n_arr = np.array(n_vec)
-        if abs(n_arr[0]) < 0.9:
-            ref = np.array([1.0, 0.0, 0.0])
-        else:
-            ref = np.array([0.0, 1.0, 0.0])
-        u = np.cross(n_arr, ref)
-        u_norm = np.linalg.norm(u)
-        if u_norm > 1e-12:
-            u /= u_norm
-        v = np.cross(n_arr, u)
-        return [np.array([np.dot(p, u), np.dot(p, v)]) for p in pts]
+    # Project 3D coordinates to 2D isometry
+    n_arr = np.array(normal)
+    if abs(n_arr[0]) < 0.9:
+        ref = np.array([1.0, 0.0, 0.0])
+    else:
+        ref = np.array([0.0, 1.0, 0.0])
+    u = np.cross(n_arr, ref)
+    u_norm = np.linalg.norm(u)
+    if u_norm > 1e-12:
+        u /= u_norm
+    v = np.cross(n_arr, u)
 
-    # Helper to compute absolute area of possibly self-intersecting 2D polygon
-    def compute_absolute_area_2d(p2d):
-        n_pts = len(p2d)
-        for i in range(n_pts):
-            for j in range(i + 2, n_pts):
-                if i == 0 and j == n_pts - 1:
-                    continue
-                A = p2d[i]
-                B = p2d[(i + 1) % n_pts]
-                C = p2d[j]
-                D = p2d[(j + 1) % n_pts]
+    pts_2d = [np.array([np.dot(p, u), np.dot(p, v)]) for p in coords]
 
-                r = B - A
-                s = D - C
-                denom = r[0]*s[1] - r[1]*s[0]
-                if abs(denom) > 1e-12:
-                    num_t = (C[0]-A[0])*s[1] - (C[1]-A[1])*s[0]
-                    num_u = (C[0]-A[0])*r[1] - (C[1]-A[1])*r[0]
-                    t = num_t / denom
-                    u = num_u / denom
-                    if 1e-11 < t < 1.0 - 1e-11 and 1e-11 < u < 1.0 - 1e-11:
-                        P = A + t * r
-                        loop1 = p2d[i+1 : j+1] + [P]
-                        loop2 = p2d[j+1:] + p2d[:i+1] + [P]
-                        return compute_absolute_area_2d(loop1) + compute_absolute_area_2d(loop2)
+    def seg_intersect(a_pt, b_pt, c_pt, d_pt):
+        denom = (b_pt[0] - a_pt[0]) * (d_pt[1] - c_pt[1]) - (b_pt[1] - a_pt[1]) * (d_pt[0] - c_pt[0])
+        if abs(denom) < 1e-9:
+            return None
+        t_param = ((c_pt[0] - a_pt[0]) * (d_pt[1] - c_pt[1]) - (c_pt[1] - a_pt[1]) * (d_pt[0] - c_pt[0])) / denom
+        u_param = ((c_pt[0] - a_pt[0]) * (b_pt[1] - a_pt[1]) - (c_pt[1] - a_pt[1]) * (b_pt[0] - a_pt[0])) / denom
+        if 1e-9 < t_param < 1.0 - 1e-9 and 1e-9 < u_param < 1.0 - 1e-9:
+            return t_param, u_param
+        return None
 
+    n_v = len(pts_2d)
+    has_intersection = False
+    edge_intersections = {k: [] for k in range(n_v)}
+    local_vertices = [{"2d": pts_2d[idx]} for idx in range(n_v)]
+
+    for k in range(n_v):
+        for m in range(k + 2, n_v):
+            if k == 0 and m == n_v - 1:
+                continue
+            res = seg_intersect(pts_2d[k], pts_2d[(k + 1) % n_v], pts_2d[m], pts_2d[(m + 1) % n_v])
+            if res is not None:
+                t_val, u_val = res
+                has_intersection = True
+                p2d_orig = (1 - t_val) * pts_2d[k] + t_val * pts_2d[(k + 1) % n_v]
+
+                v_idx = -1
+                for idx, vertex in enumerate(local_vertices):
+                    if np.linalg.norm(vertex["2d"] - p2d_orig) < 1e-5:
+                        v_idx = idx
+                        break
+                if v_idx == -1:
+                    local_vertices.append({"2d": p2d_orig})
+                    v_idx = len(local_vertices) - 1
+
+                edge_intersections[k].append((t_val, v_idx))
+                edge_intersections[m].append((u_val, v_idx))
+
+    if not has_intersection:
         area = 0.0
-        for i in range(n_pts):
-            p1 = p2d[i]
-            p2 = p2d[(i + 1) % n_pts]
+        for i in range(n_v):
+            p1 = pts_2d[i]
+            p2 = pts_2d[(i + 1) % n_v]
             area += p1[0] * p2[1] - p2[0] * p1[1]
-        return 0.5 * abs(area)
+        return normal, 0.5 * abs(area)
 
-    p2d_proj = project_to_2d_isometry(coords, normal)
-    abs_area = compute_absolute_area_2d(p2d_proj)
+    segments = []
+    for k in range(n_v):
+        v_start = k
+        v_end = (k + 1) % n_v
+        inters = sorted(edge_intersections[k], key=lambda x: x[0])
+
+        curr_idx = v_start
+        for _, inter_idx in inters:
+            segments.append((curr_idx, inter_idx))
+            curr_idx = inter_idx
+        segments.append((curr_idx, v_end))
+
+    cleaned_segments = []
+    seen_segments = set()
+    for u_idx, v_idx in segments:
+        if u_idx == v_idx:
+            continue
+        seg_key = tuple(sorted((u_idx, v_idx)))
+        if seg_key not in seen_segments:
+            seen_segments.add(seg_key)
+            cleaned_segments.append((u_idx, v_idx))
+
+    adj = {idx: [] for idx in range(len(local_vertices))}
+    half_edges = []
+    half_edge_lookup = {}
+
+    for u_idx, v_idx in cleaned_segments:
+        half_edges.append({"from": u_idx, "to": v_idx, "visited": False})
+        half_edge_lookup[(u_idx, v_idx)] = len(half_edges) - 1
+        adj[u_idx].append(v_idx)
+
+        half_edges.append({"from": v_idx, "to": u_idx, "visited": False})
+        half_edge_lookup[(v_idx, u_idx)] = len(half_edges) - 1
+        adj[v_idx].append(u_idx)
+
+    sorted_adj = {}
+    for u_idx in range(len(local_vertices)):
+        u_2d = local_vertices[u_idx]["2d"]
+        sorted_adj[u_idx] = sorted(
+            adj[u_idx],
+            key=lambda v_idx: math.atan2(local_vertices[v_idx]["2d"][1] - u_2d[1], local_vertices[v_idx]["2d"][0] - u_2d[0])
+        )
+
+    loops = []
+    for he_idx, he in enumerate(half_edges):
+        if he["visited"]:
+            continue
+
+        cycle = []
+        curr_he_idx = he_idx
+
+        while True:
+            curr_he = half_edges[curr_he_idx]
+            if curr_he["visited"]:
+                break
+            curr_he["visited"] = True
+            u_idx = curr_he["from"]
+            v_idx = curr_he["to"]
+            cycle.append(v_idx)
+
+            v_neighbors = sorted_adj[v_idx]
+            u_pos = v_neighbors.index(u_idx)
+            next_neighbor = v_neighbors[(u_pos - 1) % len(v_neighbors)]
+            curr_he_idx = half_edge_lookup[(v_idx, next_neighbor)]
+
+        if len(cycle) >= 3:
+            loops.append(cycle)
+
+    abs_area = 0.0
+    for cycle in loops:
+        area = 0.0
+        n_c = len(cycle)
+        for idx_c in range(n_c):
+            p1 = local_vertices[cycle[idx_c]]["2d"]
+            p2 = local_vertices[cycle[(idx_c + 1) % n_c]]["2d"]
+            area += p1[0] * p2[1] - p2[0] * p1[1]
+        area = 0.5 * area
+        if area > 1e-7:
+            abs_area += area
+
     return normal, abs_area
 
 def is_concave_face(coords, face_normal):
@@ -187,6 +272,8 @@ def is_concave_face(coords, face_normal):
     if len(coords) < 4:
         return False
 
+    has_pos = False
+    has_neg = False
     for i in range(len(coords)):
         v_prev = coords[i - 1]
         v_curr = coords[i]
@@ -200,24 +287,32 @@ def is_concave_face(coords, face_normal):
         local_nz = e1[0] * e2[1] - e1[1] * e2[0]
 
         dot = local_nx * face_normal[0] + local_ny * face_normal[1] + local_nz * face_normal[2]
-        if dot < -1e-12:
+        if dot > 1e-9:
+            has_pos = True
+        elif dot < -1e-9:
+            has_neg = True
+
+        if has_pos and has_neg:
             return True
     return False
 
-
 def is_crossed_face(coords, normal):
-    """Checks if a face is self-intersecting (crossed) by projecting to 2D."""
+    """Checks if a face is self-intersecting (crossed) by projecting to 2D isometrically."""
     if len(coords) < 4:
         return False
 
-    nx, ny, nz = normal
-    abs_x, abs_y, abs_z = abs(nx), abs(ny), abs(nz)
-    if abs_z >= abs_x and abs_z >= abs_y:
-        p2d = [(v[0], v[1]) for v in coords]
-    elif abs_y >= abs_x:
-        p2d = [(v[0], v[2]) for v in coords]
+    # Project 3D coordinates onto the face plane isometrically
+    n_arr = np.array(normal)
+    if abs(n_arr[0]) < 0.9:
+        ref = np.array([1.0, 0.0, 0.0])
     else:
-        p2d = [(v[1], v[2]) for v in coords]
+        ref = np.array([0.0, 1.0, 0.0])
+    u = np.cross(n_arr, ref)
+    u_norm = np.linalg.norm(u)
+    if u_norm > 1e-12:
+        u /= u_norm
+    v = np.cross(n_arr, u)
+    p2d = [np.array([np.dot(p, u), np.dot(p, v)]) for p in coords]
 
     n = len(p2d)
     for i in range(n):
@@ -239,7 +334,6 @@ def is_crossed_face(coords, normal):
                 ((d3 > 1e-12 and d4 < -1e-12) or (d3 < -1e-12 and d4 > 1e-12))):
                 return True
     return False
-
 
 def check_planarity(coords, normal, tolerance=1e-6):
     """Checks if all vertices of a face lie on the same plane."""
@@ -277,8 +371,7 @@ def find_closest_vertex_distance(unique_vertices, initial_estimate):
                 d_min = dist
     return d_min
 
-# File: offcheck.py
-# Version: 4.9
+
 
 def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     """The core consistency checking logic with vertex, edge, and face type classification."""
@@ -288,23 +381,20 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         if n < 3:
             return False
 
-        # Compute edge lengths
         lengths = []
         for j in range(n):
             v1 = coords[j]
             v2 = coords[(j + 1) % n]
-            d = math.sqrt(sum((a - b)**2 for a, b in zip(v1, v2)))
+            d = math.sqrt(sum((a - b) ** 2 for a, b in zip(v1, v2)))
             lengths.append(d)
 
-        # Check if all lengths are close to the mean
         mean_l = sum(lengths) / n
         if mean_l < 1e-12:
             return False
-        for l in lengths:
-            if abs(l - mean_l) > tolerance:
+        for l_val in lengths:
+            if abs(l_val - mean_l) > tolerance:
                 return False
 
-        # Compute corner angles (represented by cosine of angle)
         cosines = []
         for j in range(n):
             v_prev = coords[j - 1]
@@ -319,7 +409,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             if len1 < 1e-12 or len2 < 1e-12:
                 return False
 
-            dot = sum(x*y for x, y in zip(d1, d2))
+            dot = sum(x * y for x, y in zip(d1, d2))
             cos_val = dot / (len1 * len2)
             cos_val = max(-1.0, min(1.0, cos_val))
             cosines.append(cos_val)
@@ -331,19 +421,20 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         return True
 
     try:
-        with open(filepath, 'r') as f:
-            lines = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
+        with open(filepath, "r") as f:
+            lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
     except (OSError, UnicodeDecodeError) as e:
         err = f"Error opening file: {e}"
         return (err, None) if return_stats else err
 
-    if not lines or not lines[0].startswith('OFF'):
+    if not lines or not lines[0].startswith("OFF"):
         err = "Error: Valid OFF header not found."
         return (err, None) if return_stats else err
 
-    header_idx = 1 if lines[0] == 'OFF' else 0
+    header_idx = 1 if lines[0] == "OFF" else 0
     count_line = lines[header_idx]
-    if header_idx == 0: count_line = count_line[3:].strip()
+    if header_idx == 0:
+        count_line = count_line[3:].strip()
 
     try:
         counts = list(map(int, count_line.split()))
@@ -361,37 +452,26 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
 
     # --- 1. Parse Vertices ---
     vertices = []
-    vertex_positions = defaultdict(list)
-    duplicate_coords_count = 0
     max_decimal_places = 0
 
     for i in range(data_start_idx, vertex_end_idx):
         try:
             raw_parts = lines[i].split()[:3]
             for part in raw_parts:
-                if '.' in part:
-                    dec_part = part.split('.')[1].split('e')[0].split('E')[0]
+                if "." in part:
+                    dec_part = part.split(".")[1].split("e")[0].split("E")[0]
                     max_decimal_places = max(max_decimal_places, len(dec_part))
 
             coords = tuple(map(float, raw_parts))
             vertices.append(coords)
-            vertex_positions[coords].append(i - data_start_idx)
         except ValueError:
             err = f"Error: Could not parse coordinates at vertex line {i}."
             return (err, None) if return_stats else err
 
-    for pos in vertex_positions:
-        if len(vertex_positions[pos]) > 1:
-            duplicate_coords_count += 1
-
-    # Calculate distance to origin for each vertex
-    origin_distances = [math.sqrt(v[0]**2 + v[1]**2 + v[2]**2) for v in vertices]
-    max_origin_dist = max(origin_distances) if origin_distances else 0.0
-    min_origin_dist = min(origin_distances) if origin_distances else 0.0
-
     # --- 2. Parse Faces ---
     edge_dict = defaultdict(int)
     vertex_valence_map = [set() for _ in range(num_vertices)]
+    vertex_faces_map = [list() for _ in range(num_vertices)]
     face_type_counts = defaultdict(int)
     face_lines = lines[vertex_end_idx : vertex_end_idx + num_faces]
     zero_area_faces = []
@@ -400,8 +480,8 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     crossed_faces = []
     concave_faces = []
     non_planar_faces = []
-    min_face_area = float('inf')
-    shortest_edge_len = float('inf')
+    min_face_area = float("inf")
+    shortest_edge_len = float("inf")
     max_planar_err = 0.0
     TOLERANCE = 1e-12
 
@@ -409,13 +489,15 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     parsed_faces = []
     face_normals = []
     face_areas = []
+    used_vertex_indices = set()
 
     for i, line in enumerate(face_lines):
         raw_parts = line.split()
-        if not raw_parts: continue
+        if not raw_parts:
+            continue
         try:
             n_v = int(raw_parts[0])
-            v_indices = list(map(int, raw_parts[1:1+n_v]))
+            v_indices = list(map(int, raw_parts[1 : 1 + n_v]))
         except ValueError:
             err = f"Error: Face {i} has non-integer indices."
             return (err, None) if return_stats else err
@@ -427,6 +509,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         parsed_faces.append(v_indices)
         face_type_counts[n_v] += 1
         processed_face_count += 1
+        used_vertex_indices.update(v_indices)
 
         if len(set(v_indices)) != len(v_indices):
             faces_with_repeats.append(i)
@@ -450,6 +533,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             edge_dict[edge] += 1
             vertex_valence_map[v_idx].add(edge)
             vertex_valence_map[v_next_idx].add(edge)
+            vertex_faces_map[v_idx].append(i)
 
         # Check for Hemihedra (centered at origin)
         cx = sum(v[0] for v in face_coords) / n_v
@@ -473,12 +557,28 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             if is_concave_face(face_coords, normal):
                 concave_faces.append(i)
 
-            # Using the stable normal of the face's convex hull for planarity checks
             hull_normal = get_convex_hull_normal(face_coords)
             is_np, err = check_planarity(face_coords, hull_normal)
             max_planar_err = max(max_planar_err, err)
             if is_np:
                 non_planar_faces.append(i)
+
+    # Filter strictly to used vertices
+    active_vertices = [vertices[idx] for idx in sorted(used_vertex_indices)]
+    num_active_vertices = len(active_vertices)
+
+    vertex_positions = defaultdict(list)
+    for idx in used_vertex_indices:
+        vertex_positions[vertices[idx]].append(idx)
+
+    duplicate_coords_count = sum(1 for pos in vertex_positions if len(vertex_positions[pos]) > 1)
+
+    origin_distances = {
+        idx: math.sqrt(vertices[idx][0] ** 2 + vertices[idx][1] ** 2 + vertices[idx][2] ** 2)
+        for idx in used_vertex_indices
+    }
+    max_origin_dist = max(origin_distances.values()) if origin_distances else 0.0
+    min_origin_dist = min(origin_distances.values()) if origin_distances else 0.0
 
     # --- 2a. Determine Regular Faces Status ---
     all_regular = True if processed_face_count > 0 else False
@@ -529,46 +629,39 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     non_manifold = [e for e, c in edge_dict.items() if c > 2]
 
     valence_distribution = defaultdict(int)
-    for v_edges in vertex_valence_map:
-        valence_distribution[len(v_edges)] += 1
+    for idx in used_vertex_indices:
+        valence_distribution[len(vertex_valence_map[idx])] += 1
 
     # Genus calculation: (2 - Euler Characteristic) / 2
-    euler_chi = num_vertices - len(edge_dict) + actual_num_faces
+    euler_chi = num_active_vertices - len(edge_dict) + actual_num_faces
     genus = (2 - euler_chi) / 2
     if genus.is_integer():
         genus = int(genus)
 
-    # Gonality: Populated if all faces have the same gonality
     gonality = ""
     if len(face_type_counts) == 1:
         gonality = next(iter(face_type_counts))
 
-    # Valence: Populated only if all vertices of input polyhedron have the same valence
     shared_valence = ""
-    if len(valence_distribution) == 1 and num_vertices > 0:
+    if len(valence_distribution) == 1 and num_active_vertices > 0:
         shared_valence = next(iter(valence_distribution))
 
     # --- 3a. Geometric Path Metrics & Weighted Wiener Index scaled to R = 1 ---
-    # Find Centroid and Circumradius
-    if num_vertices > 0:
-        xs = [v[0] for v in vertices]
-        ys = [v[1] for v in vertices]
-        zs = [v[2] for v in vertices]
-        cx = sum(xs) / num_vertices
-        cy = sum(ys) / num_vertices
-        cz = sum(zs) / num_vertices
+    if num_active_vertices > 0:
+        xs = [v[0] for v in active_vertices]
+        ys = [v[1] for v in active_vertices]
+        zs = [v[2] for v in active_vertices]
+        cx = sum(xs) / num_active_vertices
+        cy = sum(ys) / num_active_vertices
+        cz = sum(zs) / num_active_vertices
 
-        max_r_sq = 0.0
-        for v in vertices:
-            r_sq = (v[0] - cx)**2 + (v[1] - cy)**2 + (v[2] - cz)**2
-            max_r_sq = max(max_r_sq, r_sq)
+        max_r_sq = max((v[0] - cx) ** 2 + (v[1] - cy) ** 2 + (v[2] - cz) ** 2 for v in active_vertices)
         circumradius = math.sqrt(max_r_sq) if max_r_sq > 0 else 1.0
     else:
         circumradius = 1.0
 
     scale_factor = 1.0 / circumradius
 
-    # Scale the edge lengths
     edge_lengths = {}
     for (u, v), count in edge_dict.items():
         v1 = vertices[u]
@@ -576,7 +669,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         dist = math.sqrt(sum((a - b) ** 2 for a, b in zip(v1, v2)))
         edge_lengths[(u, v)] = dist * scale_factor
 
-    adj_weighted = [[] for _ in range(num_vertices)]
+    adj_weighted = defaultdict(list)
     for (u, v), length in edge_lengths.items():
         adj_weighted[u].append((v, length))
         adj_weighted[v].append((u, length))
@@ -584,7 +677,7 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     total_geom_dist = 0
     disconnected = False
 
-    for start in range(num_vertices):
+    for start in used_vertex_indices:
         dist_map = {start: 0.0}
         pq = [(0.0, start)]
         while pq:
@@ -597,35 +690,42 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
                     dist_map[nbr] = new_d
                     heapq.heappush(pq, (new_d, nbr))
 
-        if len(dist_map) < num_vertices:
+        if len(dist_map) < num_active_vertices:
             disconnected = True
         for d_val in dist_map.values():
             total_geom_dist += d_val
 
-    if not disconnected and num_vertices > 1:
+    if not disconnected and num_active_vertices > 1:
         wiener_index = total_geom_dist / 2
     else:
-        wiener_index = float('nan')
+        wiener_index = float("nan")
 
-    # --- 3b. Determine Geometric Types ---
-    crossed_faces_set = set(crossed_faces)
-    concave_faces_set = set(concave_faces)
-    non_planar_faces_set = set(non_planar_faces)
-    zero_area_faces_set = set(zero_area_faces)
-    hemihedral_faces_set = set(hemihedral_faces)
+    # --- 3b. Determine Combinatorial Types ---
+    # 1. Face Types (based on un-triangulated combinatorial face definition)
+    face_type_map = {}
+    face_types = set()
+    for i, v_indices in enumerate(parsed_faces):
+        n_v = len(v_indices)
+        f_edge_lens = tuple(sorted(round(edge_lengths[tuple(sorted((v_indices[j], v_indices[(j + 1) % n_v])))] , 4) for j in range(n_v)))
+        f_desc = (n_v, f_edge_lens)
+        face_types.add(f_desc)
+        face_type_map[i] = f_desc
+    ft = len(face_types)
 
-    # Vertex Type Classification
+    # 2. Vertex Types
     vertex_types = set()
-    for i in range(num_vertices):
+    for idx in used_vertex_indices:
+        incident_f_types = tuple(sorted(face_type_map[f_i] for f_i in vertex_faces_map[idx]))
         v_desc = (
-            len(vertex_valence_map[i]),
-            round(origin_distances[i], 5),
-            tuple(sorted(round(edge_lengths[e], 5) for e in vertex_valence_map[i]))
+            len(vertex_valence_map[idx]),
+            round(origin_distances[idx] * scale_factor, 4),
+            tuple(sorted(round(edge_lengths[e], 4) for e in vertex_valence_map[idx])),
+            incident_f_types,
         )
         vertex_types.add(v_desc)
     tv = len(vertex_types)
 
-    # Edge Type Classification
+    # 3. Edge Types
     edge_types = set()
     for e in edge_dict:
         dihedral_key = 0.0
@@ -634,36 +734,21 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             f1, f2 = incident_f
             n1 = face_normals[f1]
             n2 = face_normals[f2]
-            dot_prod = sum(a*b for a, b in zip(n1, n2))
-            dihedral_key = round(max(-1.0, min(1.0, abs(dot_prod))), 5)
+            dot_prod = sum(a * b for a, b in zip(n1, n2))
+            dihedral_key = round(abs(dot_prod), 4)
         else:
             dihedral_key = float(len(incident_f))
 
+        incident_face_types = tuple(sorted(face_type_map[f_i] for f_i in incident_f))
         e_desc = (
-            round(edge_lengths[e], 5),
+            round(edge_lengths[e], 4),
             len(incident_f),
             dihedral_key,
-            tuple(sorted((len(vertex_valence_map[e[0]]), len(vertex_valence_map[e[1]]))))
+            incident_face_types,
+            tuple(sorted((len(vertex_valence_map[e[0]]), len(vertex_valence_map[e[1]])))),
         )
         edge_types.add(e_desc)
     et = len(edge_types)
-
-    # Face Type Classification
-    face_types = set()
-    for i, v_indices in enumerate(parsed_faces):
-        n_v = len(v_indices)
-        f_desc = (
-            n_v,
-            round(face_areas[i] * (scale_factor**2), 5),
-            i in crossed_faces_set,
-            i in concave_faces_set,
-            i in non_planar_faces_set,
-            i in zero_area_faces_set,
-            i in hemihedral_faces_set,
-            tuple(sorted(round(edge_lengths[tuple(sorted((v_indices[j], v_indices[(j+1)%n_v])))] , 5) for j in range(n_v)))
-        )
-        face_types.add(f_desc)
-    ft = len(face_types)
 
     # Polyhedron Classification
     classification = ""
@@ -687,22 +772,20 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     if classification and compound_parts > 1:
         classification += " Compound"
 
-    # --- 4. Symmetry Group and Order (Calling math_utils) ---
+    # --- 4. Symmetry Group and Order ---
     symmetry_order = ""
     symmetry_symbol = ""
     if run_symmetry:
         symmetry_order = "N/A"
         symmetry_symbol = "N/A"
         try:
-            verts_np = np.array(vertices, dtype=np.float64)
+            verts_np = np.array(active_vertices, dtype=np.float64)
             symmetries = math_utils.get_symmetry_group(verts_np)
             symmetry_order = len(symmetries)
 
-            # Classify using the indices of the full group
             full_group_indices = list(range(symmetry_order))
             classification_sym = math_utils.classify_subgroup(full_group_indices, symmetries)
 
-            # Extract the Schoenflies symbol from the parsed classification name (inside parentheses)
             if "(" in classification_sym:
                 symmetry_symbol = classification_sym.split("(")[-1].rstrip(")")
             else:
@@ -712,10 +795,12 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             symmetry_symbol = f"Error in analysis: {e}"
 
     def format_metric(val):
-        if val == float('inf') or val == 0 or math.isnan(val): return "N/A"
-        if val < 1e-4: return f"{val:.8e}"
-        s = f"{val:.8f}".rstrip('0')
-        return s + "0" if s.endswith('.') else s
+        if val == float("inf") or val == 0 or math.isnan(val):
+            return "N/A"
+        if val < 1e-4:
+            return f"{val:.8e}"
+        s = f"{val:.8f}".rstrip("0")
+        return s + "0" if s.endswith(".") else s
 
     closest_vertex_dist = find_closest_vertex_distance(list(vertex_positions.keys()), shortest_edge_len)
 
@@ -737,13 +822,13 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
 
     report = [
         f"File: {filepath}",
-        f"Vertices: {num_vertices} | Faces: {num_faces}",
+        f"Vertices: {num_active_vertices} | Faces: {num_faces}",
         f"Edges: {len(edge_dict)} | Genus: {genus}",
     ]
     if run_symmetry:
         report.append(f"Symmetry Group:               {symmetry_symbol} (order {symmetry_order})")
     report.extend([
-        f"V-E-F:                        {num_vertices}-{len(edge_dict)}-{actual_num_faces}",
+        f"V-E-F:                        {num_active_vertices}-{len(edge_dict)}-{actual_num_faces}",
         f"T(V-E-F):                     {tv}-{et}-{ft}",
         f"Compound Parts:               {compound_parts}",
         f"Coordinate Precision:         {max_decimal_places} decimal places",
@@ -773,19 +858,30 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         f"Manifold Edges:                {len(edge_dict) - len(boundary) - len(non_manifold)}",
         f"Boundary Edges (1 face):       {len(boundary)}",
         f"Non-Manifold Edges (>2 faces): {len(non_manifold)}",
-        "-" * 45
+        "-" * 45,
     ])
 
     issues = []
-    if num_faces == 0: issues.append("Header contains zero faces")
-    elif processed_face_count == 0: issues.append("No valid face definitions found")
-    if duplicate_coords_count: issues.append("Duplicate vertex coordinates")
-    if faces_with_repeats: issues.append("Faces with repeated indices")
-    if non_planar_faces: issues.append("Non-planar faces (Quads+)")
-    if zero_area_faces: issues.append("Zero-area (degenerate) faces")
-    if hemihedral_faces: issues.append("Hemihedral faces")
-    if boundary: issues.append("Open boundaries (holes)")
-    if non_manifold: issues.append("Non-manifold geometry")
+    if num_faces == 0:
+        issues.append("Header contains zero faces")
+    elif processed_face_count == 0:
+        issues.append("No valid face definitions found")
+    if num_vertices > num_active_vertices:
+        issues.append(f"Unused vertices ignored ({num_vertices - num_active_vertices})")
+    if duplicate_coords_count:
+        issues.append("Duplicate vertex coordinates")
+    if faces_with_repeats:
+        issues.append("Faces with repeated indices")
+    if non_planar_faces:
+        issues.append("Non-planar faces (Quads+)")
+    if zero_area_faces:
+        issues.append("Zero-area (degenerate) faces")
+    if hemihedral_faces:
+        issues.append("Hemihedral faces")
+    if boundary:
+        issues.append("Open boundaries (holes)")
+    if non_manifold:
+        issues.append("Non-manifold geometry")
 
     if not issues and processed_face_count > 0:
         report.append("CONCLUSION: Perfectly closed manifold mesh.")
@@ -794,7 +890,8 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         if not issues and processed_face_count == 0:
             report.append(" - Malformed file: No faces processed.")
         else:
-            for issue in issues: report.append(f" - {issue}")
+            for issue in issues:
+                report.append(f" - {issue}")
 
     if classification:
         report.append(classification)
@@ -802,13 +899,13 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
     if return_stats:
         stats = {
             "Filename": os.path.basename(filepath),
-            "Vertices": num_vertices,
+            "Vertices": num_active_vertices,
             "Faces": num_faces,
             "Edges": len(edge_dict),
             "Genus": genus,
-            "V-E-F": f"{num_vertices}-{len(edge_dict)}-{actual_num_faces}",
+            "V-E-F": f"{num_active_vertices}-{len(edge_dict)}-{actual_num_faces}",
             "T(V-E-F)": f"{tv}-{et}-{ft}",
-            "Concentration": gonality,  # Maintain name or leave empty
+            "Concentration": gonality,
             "Gonality": gonality,
             "Valence": shared_valence,
             "Symmetry Group": f"{symmetry_symbol} (order {symmetry_order})" if (run_symmetry and symmetry_symbol) else "",
@@ -827,8 +924,8 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
             "Smallest Face Area": min_face_area,
             "Shortest Edge Length": shortest_edge_len,
             "Closest Vertex Distance": closest_vertex_dist,
-            "Max Vertex Dist (Origin)": max_origin_dist if origin_distances else float('nan'),
-            "Min Vertex Dist (Origin)": min_origin_dist if origin_distances else float('nan'),
+            "Max Vertex Dist (Origin)": max_origin_dist if origin_distances else float("nan"),
+            "Min Vertex Dist (Origin)": min_origin_dist if origin_distances else float("nan"),
             "Manifold Edges": len(edge_dict) - len(boundary) - len(non_manifold),
             "Boundary Edges": len(boundary),
             "Non-Manifold Edges": len(non_manifold),
@@ -843,6 +940,8 @@ def verify_off_logic(filepath, return_stats=False, run_symmetry=True):
         return "\n".join(report), stats
 
     return "\n".join(report)
+
+
 
 
 class OFFCheckerGUI:
@@ -943,6 +1042,7 @@ class OFFCheckerGUI:
         if file_path:
             self.process_file(file_path)
 
+# Version: 4.8
     def process_file(self, filepath):
         self.text_area.delete(1.0, tk.END)
         sym_enabled = self.sym_var.get()
@@ -957,7 +1057,7 @@ class OFFCheckerGUI:
             csv_path = os.path.join(folder, 'offcheck.csv')
 
             base_headers = [
-                "Filename", "Vertices", "Faces", "Edges", "Genus", "V-E-F", "Gonality", "Valence",
+                "Filename", "Vertices", "Faces", "Edges", "Genus", "V-E-F", "T(V-E-F)", "Gonality", "Valence",
                 "Symmetry Group", "Compound Parts", "Coordinate Precision",
                 "Wiener Index (Geom)",
                 "Duplicate Coords", "Repeat Indices", "Crossed Faces", "Concave Faces", "Non-Planar Faces",
@@ -984,8 +1084,8 @@ class OFFCheckerGUI:
                             dynamic_face_keys.add(k)
                         elif k.startswith("Valence ("):
                             dynamic_valence_keys.add(k)
-                results.append(stats)
-                success_count += 1
+                    results.append(stats)
+                    success_count += 1
 
             def extract_num(key_str):
                 m = re.search(r'\d+', key_str)
@@ -1001,7 +1101,14 @@ class OFFCheckerGUI:
                     writer = csv.DictWriter(csvfile, fieldnames=headers)
                     writer.writeheader()
                     for row in results:
-                        row_data = {h: row.get(h, "") for h in headers}
+                        row_data = {}
+                        for h in headers:
+                            val = row.get(h, "")
+                            # Format hyphenated counts to prevent Excel from converting them to dates
+                            if h in ("V-E-F", "T(V-E-F)") and val:
+                                row_data[h] = f'="{val}"'
+                            else:
+                                row_data[h] = val
                         writer.writerow(row_data)
 
                 summary = [
