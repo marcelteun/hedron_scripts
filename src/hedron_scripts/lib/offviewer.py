@@ -59,13 +59,9 @@ import moderngl
 import numpy as np
 import pygame
 from pygame.locals import (
-    KEYDOWN,
-    K_c,
     K_DOWN,
-    K_e,
     K_EQUALS,
     K_ESCAPE,
-    K_f,
     K_KP_MINUS,
     K_KP_PLUS,
     K_LEFT,
@@ -73,13 +69,17 @@ from pygame.locals import (
     K_PLUS,
     K_RIGHT,
     K_UP,
-    K_v,
-    K_x,
+    KEYDOWN,
     MOUSEBUTTONDOWN,
     MOUSEBUTTONUP,
     MOUSEMOTION,
     QUIT,
     VIDEORESIZE,
+    K_c,
+    K_e,
+    K_f,
+    K_v,
+    K_x,
 )
 
 # Configuration

@@ -16,18 +16,18 @@ CHANGE LOG:
  To follow...
 """
 
+import glob
 import importlib.util
+import math
+import multiprocessing
 import os
 import re
-import shutil
-import glob
-import math
 import threading
-import multiprocessing
-import numpy as np
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
+
+import numpy as np
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -133,8 +133,7 @@ def write_colored_off(filepath, vertices, faces, colour_compounds_separately=Tru
         f.write("OFF\n")
         f.write(f"# File: {filename}\n")
         f.write(f"{len(vertices)} {len(faces)} 0\n")
-        for v in vertices:
-            f.write(f"{v[0]:.16f} {v[1]:.16f} {v[2]:.16f}\n")
+        f.writelines(f"{v[0]:.16f} {v[1]:.16f} {v[2]:.16f}\n" for v in vertices)
         for f_idx, face in enumerate(faces):
             if use_compound_coloring:
                 c_idx = comp_indices[f_idx]
@@ -696,9 +695,7 @@ class FacetingGUI:
 
     def handle_drop(self, event):
         path = event.data.strip()
-        if path.startswith("{") and path.endswith("}"):
-            path = path[1:-1]
-        elif path.startswith('"') and path.endswith('"'):
+        if path.startswith("{") and path.endswith("}") or path.startswith('"') and path.endswith('"'):
             path = path[1:-1]
 
         if os.path.exists(path) and path.lower().endswith(".off"):
@@ -1303,8 +1300,8 @@ class FacetingGUI:
                 )
 
         except Exception as e:
-            self.log(f"Exception encountered: {str(e)}")
-            messagebox.showerror("Execution Error", f"An error occurred: {str(e)}")
+            self.log(f"Exception encountered: {e!s}")
+            messagebox.showerror("Execution Error", f"An error occurred: {e!s}")
 
         self.run_button.config(state="normal")
 

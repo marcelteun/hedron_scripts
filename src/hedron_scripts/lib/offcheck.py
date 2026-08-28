@@ -10,17 +10,16 @@ Change log:
 
 """
 
-import importlib.util
 import csv
 import ctypes
 import heapq
+import importlib.util
 import math
 import os
 import re
 import sys
-from collections import defaultdict
-
 import tkinter as tk
+from collections import defaultdict
 from tkinter import filedialog, scrolledtext
 
 import numpy as np

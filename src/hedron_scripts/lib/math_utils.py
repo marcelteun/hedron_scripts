@@ -163,7 +163,7 @@ def normalize_face(face):
             min_idx = i
     shifted = face[min_idx:] + face[:min_idx]
     rev = (shifted[0],) + shifted[:0:-1]
-    return shifted if shifted < rev else rev
+    return min(rev, shifted)
 
 
 def find_cycles(vertices, adj, max_len, start_vertex=0, tol=1e-4):

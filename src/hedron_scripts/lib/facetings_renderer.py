@@ -2,12 +2,13 @@
 # Version: 1.20.0
 # Addons required: numpy, moderngl, pygame, pillow
 #
-import numpy as np
 import math
 
+import numpy as np
+
 try:
-    import pygame
     import moderngl
+    import pygame
 
     HAS_OPENGL_LIBS = True
 except ImportError:
