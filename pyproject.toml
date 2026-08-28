@@ -9,11 +9,14 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "glfw>=2.10.2",
+    "imgui-bundle>=1.92.900",
     "moderngl>=5.12.0",
     "numba>=0.67.0",
     "numpy>=2.5.2",
     "pillow>=12.3.0",
     "pygame>=2.6.1",
+    "pyrr>=0.10.3",
     "scipy>=1.18.0",
     "tkinterdnd2>=0.6.2",
     "windnd>=1.0.7",
@@ -21,6 +24,7 @@ dependencies = [
 
 [project.scripts]
 facetings = "hedron_scripts.facetings:main"
+leonardo = "hedron_scripts.leonardo:main"
 offchecker = "hedron_scripts.offchecker:main"
 offviewer = "hedron_scripts.offviewer:main"
 

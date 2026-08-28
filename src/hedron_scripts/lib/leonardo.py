@@ -66,7 +66,7 @@ def calculate_face_normal_and_area(coords):
 
 def is_crossed_or_concave(coords, face_normal):
     if len(coords) < 4:
-        return False  
+        return False
     for i in range(len(coords)):
         v_prev = coords[i - 1]
         v_curr = coords[i]
@@ -110,7 +110,7 @@ def merge_vertices(verts, faces, tolerance=1e-10):
     return np.array(unique_verts, dtype=np.float64), new_faces
 
 def ensure_consistent_normals(vertices, faces_with_data, label="Source"):
-    if not faces_with_data: 
+    if not faces_with_data:
         dprint(f"ensure_consistent_normals ({label}): No faces.")
         return faces_with_data
     num_faces = len(faces_with_data)
@@ -122,7 +122,7 @@ def ensure_consistent_normals(vertices, faces_with_data, label="Source"):
         for j in range(f_len):
             v1, v2 = face[j], face[(j + 1) % f_len]
             if v1 == v2:
-                continue 
+                continue
             face_adj.setdefault(tuple(sorted((v1, v2))), []).append(i)
     processed_faces = [[list(f), col] for f, col in faces_with_data]
     total_visited = 0
@@ -280,7 +280,7 @@ def load_poly_data(path):
         else:
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                 raw_lines = f.readlines()
-            
+
             lines = []
             for l in raw_lines:
                 stripped = l.strip()
@@ -288,10 +288,10 @@ def load_poly_data(path):
                     stripped = stripped.replace('\ufeff', '')
                 if stripped and not stripped.startswith('#'):
                     lines.append(stripped)
-            
+
             if not lines:
                 return None
-                
+
             if lines[0].startswith('OFF'):
                 if len(lines[0]) > 3:
                     header = lines[0][3:].split()
@@ -302,7 +302,7 @@ def load_poly_data(path):
             else:
                 header = lines[0].split()
                 start = 1
-                
+
             nv, nf, _ = map(int, header)
             verts = np.array([list(map(float, l.split()[:3])) for l in lines[start:start+nv]], dtype=np.float64)
             for i in range(nf):
@@ -317,7 +317,7 @@ def load_poly_data(path):
         return verts, faces, cols
     except (OSError, ValueError, IndexError, KeyError):
         return None
-        
+
 # =========================================================
 # LEONARDO SOLVER
 # =========================================================
@@ -467,7 +467,7 @@ class Viewer:
         self.trigger_warning = False
         glfw.set_drop_callback(self.win, lambda w, p: self.load(p[0]))
         glfw.set_scroll_callback(self.win, lambda w, x, y: self.on_scroll(y))
-        
+
         initial_file = None
         if len(sys.argv) > 1:
             arg = sys.argv[1]
@@ -586,20 +586,20 @@ class Viewer:
             self.update_mesh()
         self.ctx.viewport = (0, 0, w, h)
         self.ctx.clear(0.1, 0.1, 0.1)
-        
+
         # --- FIXED VIEW-SPACE TRANSFORMATION PIPELINE ---
         if not imgui.get_io().want_capture_mouse:
             if glfw.get_mouse_button(self.win, 0) or glfw.get_mouse_button(self.win, 1):
                 cx, cy = glfw.get_cursor_pos(self.win)
                 if self.drag:
                     dx, dy = cx - self.last_mouse[0], cy - self.last_mouse[1]
-                    if imgui.get_io().key_ctrl: 
+                    if imgui.get_io().key_ctrl:
                         self.zoom = max(0.5, min(10.0, self.zoom + dy * 0.01))
                     elif glfw.get_mouse_button(self.win, 0):
                         delta_yaw = Matrix44.from_y_rotation(-dx * 0.01)
                         delta_pitch = Matrix44.from_x_rotation(-dy * 0.01)
                         self.model_orientation = self.model_orientation @ delta_yaw @ delta_pitch
-                        
+
                 self.last_mouse, self.drag = (cx, cy), True
             else:
                 self.drag = False
@@ -607,12 +607,12 @@ class Viewer:
         model = self.model_orientation
         view = Matrix44.look_at((0, 0, self.zoom), (0, 0, 0), (0, 1, 0))
         proj = Matrix44.perspective_projection(45, w/h, 0.1, 100)
-        
-        for name, val in [("model", model), ("view", view), ("proj", proj)]: 
+
+        for name, val in [("model", model), ("view", view), ("proj", proj)]:
             self.prog[name].write(val.astype('f4'))
-            
+
         self.prog["normal_matrix"].write(np.ascontiguousarray(np.linalg.inv(np.array(model))[:3, :3].T.astype('f4')))
-        
+
         if self.vao:
             self.prog["u_alpha"].value, self.prog["is_line"].value = 1.0, False
             self.vao.render()
@@ -629,9 +629,9 @@ class Viewer:
         imgui.backends.glfw_new_frame()
         imgui.new_frame()
 
-        if self.trigger_warning: 
-            imgui.set_next_window_size((500, 500))  
-            imgui.open_popup("Geometry Warning") 
+        if self.trigger_warning:
+            imgui.set_next_window_size((500, 500))
+            imgui.open_popup("Geometry Warning")
             self.trigger_warning = False
         if imgui.begin_popup_modal("Geometry Warning", True)[0]:
             msg = "WARNING: Quality issues found:\n"
@@ -655,7 +655,7 @@ class Viewer:
                 self.pending_load = None
                 imgui.close_current_popup()
             imgui.end_popup()
-            
+
         if self.cli_error:
             imgui.open_popup("File Error")
         if imgui.begin_popup_modal("File Error", True)[0]:
@@ -689,7 +689,7 @@ class Viewer:
             _, self.src_alpha = imgui.slider_float("Alpha", self.src_alpha, 0.0, 1.0)
         if u3 or u4:
             self.dirty = True
-        if imgui.button("Export OFF", (-1, 0)): 
+        if imgui.button("Export OFF", (-1, 0)):
             try:
                 p = os.path.join(self.source_dir, f"{self.base_filename}_leonardo.off")
                 with open(p, "w") as f:
@@ -712,7 +712,7 @@ class Viewer:
         imgui.render()
         imgui.backends.opengl3_render_draw_data(imgui.get_draw_data())
         glfw.swap_buffers(self.win)
-        
+
     def run(self):
         while not glfw.window_should_close(self.win):
             glfw.poll_events()
@@ -722,5 +722,8 @@ class Viewer:
         imgui.destroy_context()
         glfw.terminate()
 
-if __name__ == "__main__":
+def main():
     Viewer().run()
+
+if __name__ == "__main__":
+    main()
