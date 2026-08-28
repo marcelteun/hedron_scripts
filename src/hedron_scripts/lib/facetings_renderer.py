@@ -1,4 +1,3 @@
-
 # File: facetings_renderer.py
 # Version: 1.20.0
 # Addons required: numpy, moderngl, pygame, pillow
@@ -9,12 +8,14 @@ import math
 try:
     import pygame
     import moderngl
+
     HAS_OPENGL_LIBS = True
 except ImportError:
     HAS_OPENGL_LIBS = False
 
 try:
     from PIL import Image, ImageTk
+
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -34,15 +35,16 @@ except ModuleNotFoundError:
 
 # Base palette for the first 8 components
 COMPOUND_COLORS_FLOAT = [
-    [1.0, 0.0, 0.0],      # red
-    [1.0, 1.0, 0.0],      # yellow
-    [0.0, 1.0, 0.0],      # green
-    [0.2, 0.3, 1.0],      # blue
-    [1.0, 0.0, 1.0],      # magenta
-    [0.0, 1.0, 1.0],      # cyan
-    [1.0, 0.5, 0.0],      # orange
-    [0.5, 0.0, 1.0],      # purple
+    [1.0, 0.0, 0.0],  # red
+    [1.0, 1.0, 0.0],  # yellow
+    [0.0, 1.0, 0.0],  # green
+    [0.2, 0.3, 1.0],  # blue
+    [1.0, 0.0, 1.0],  # magenta
+    [0.0, 1.0, 1.0],  # cyan
+    [1.0, 0.5, 0.0],  # orange
+    [0.5, 0.0, 1.0],  # purple
 ]
+
 
 def get_compound_color(c_idx, num_components):
     """Returns a distinct float color. Uses the base palette, or generates HSL colors if components > 8."""
@@ -54,13 +56,20 @@ def get_compound_color(c_idx, num_components):
     c = 0.85 * (1.0 - abs(2.0 * 0.6 - 1.0))
     x = c * (1.0 - abs(h % 2.0 - 1.0))
     m = 0.6 - c / 2.0
-    if h < 1.0:   r, g, b = c, x, 0.0
-    elif h < 2.0: r, g, b = x, c, 0.0
-    elif h < 3.0: r, g, b = 0.0, c, x
-    elif h < 4.0: r, g, b = 0.0, x, c
-    elif h < 5.0: r, g, b = x, 0.0, c
-    else:         r, g, b = c, 0.0, x
+    if h < 1.0:
+        r, g, b = c, x, 0.0
+    elif h < 2.0:
+        r, g, b = x, c, 0.0
+    elif h < 3.0:
+        r, g, b = 0.0, c, x
+    elif h < 4.0:
+        r, g, b = 0.0, x, c
+    elif h < 5.0:
+        r, g, b = x, 0.0, c
+    else:
+        r, g, b = c, 0.0, x
     return [r + m, g + m, b + m]
+
 
 def get_face_component_indices(faces):
     """Partitions a face list into separate connected components and returns indices mapping."""
@@ -69,7 +78,7 @@ def get_face_component_indices(faces):
     edge_to_faces = {}
     for f_idx, face in enumerate(faces):
         for i in range(len(face)):
-            u, v = face[i], face[(i+1)%len(face)]
+            u, v = face[i], face[(i + 1) % len(face)]
             edge = frozenset([u, v])
             edge_to_faces.setdefault(edge, []).append(f_idx)
 
@@ -77,7 +86,7 @@ def get_face_component_indices(faces):
     adj = [[] for _ in range(num_faces)]
     for edge, f_indices in edge_to_faces.items():
         for i in range(len(f_indices)):
-            for j in range(i+1, len(f_indices)):
+            for j in range(i + 1, len(f_indices)):
                 u = f_indices[i]
                 v = f_indices[j]
                 adj[u].append(v)
@@ -100,6 +109,7 @@ def get_face_component_indices(faces):
             comp_count += 1
     return comp_indices, comp_count
 
+
 class HeadlessRenderer:
     def __init__(self, width=400, height=400):
         self.width = width
@@ -120,7 +130,7 @@ class HeadlessRenderer:
                 self.ctx = moderngl.create_standalone_context()
                 self.fbo = self.ctx.framebuffer(
                     color_attachments=[self.ctx.texture((width, height), 3)],
-                    depth_attachment=self.ctx.depth_renderbuffer((width, height))
+                    depth_attachment=self.ctx.depth_renderbuffer((width, height)),
                 )
                 self.setup_shaders()
             except Exception:
@@ -173,22 +183,32 @@ class HeadlessRenderer:
         }
         """
 
-        self.prog_solid = self.ctx.program(vertex_shader=vertex_shader_solid, fragment_shader=fragment_shader_solid)
-        self.prog_lines = self.ctx.program(vertex_shader=vertex_shader_lines, fragment_shader=fragment_shader_lines)
+        self.prog_solid = self.ctx.program(
+            vertex_shader=vertex_shader_solid, fragment_shader=fragment_shader_solid
+        )
+        self.prog_lines = self.ctx.program(
+            vertex_shader=vertex_shader_lines, fragment_shader=fragment_shader_lines
+        )
 
     def clear_gpu_cache(self):
         """Cleans and releases active GPU shader buffers."""
-        if self.vbo_solid: self.vbo_solid.release()
-        if self.vbo_lines: self.vbo_lines.release()
-        if self.vao_solid: self.vao_solid.release()
-        if self.vao_lines: self.vao_lines.release()
+        if self.vbo_solid:
+            self.vbo_solid.release()
+        if self.vbo_lines:
+            self.vbo_lines.release()
+        if self.vao_solid:
+            self.vao_solid.release()
+        if self.vao_lines:
+            self.vao_lines.release()
         self.vbo_solid = None
         self.vbo_lines = None
         self.vao_solid = None
         self.vao_lines = None
         self.cache_key = None
 
-    def render(self, vertices, faces, angle_x, angle_y, colour_compounds_separately=True):
+    def render(
+        self, vertices, faces, angle_x, angle_y, colour_compounds_separately=True
+    ):
         if not self.ctx:
             return None
 
@@ -197,7 +217,7 @@ class HeadlessRenderer:
 
         self.fbo.use()
         self.ctx.enable(moderngl.DEPTH_TEST)
-        self.ctx.depth_func = '<='
+        self.ctx.depth_func = "<="
         self.ctx.clear(0.12, 0.12, 0.14, 1.0)
 
         # Re-upload GPU data only if the mesh or coloring setup has changed
@@ -226,7 +246,9 @@ class HeadlessRenderer:
                     color = get_compound_color(c_idx, num_components)
                 else:
                     sides = len(face)
-                    raw_color = math_utils.COLOR_MAP.get(sides, math_utils.DEFAULT_COLOR)
+                    raw_color = math_utils.COLOR_MAP.get(
+                        sides, math_utils.DEFAULT_COLOR
+                    )
                     color = [c / 255.0 for c in raw_color]
 
                 if len(pts) >= 3:
@@ -253,22 +275,27 @@ class HeadlessRenderer:
                     line_vertices.extend(p1)
                     line_vertices.extend(p2)
 
-            v_data = np.array(tri_vertices, dtype='float32')
-            n_data = np.array(tri_normals, dtype='float32')
-            c_data = np.array(tri_colors, dtype='float32')
-            l_data = np.array(line_vertices, dtype='float32')
+            v_data = np.array(tri_vertices, dtype="float32")
+            n_data = np.array(tri_normals, dtype="float32")
+            c_data = np.array(tri_colors, dtype="float32")
+            l_data = np.array(line_vertices, dtype="float32")
 
-            vbo_array = np.zeros(len(v_data) // 3 * 9, dtype='float32')
+            vbo_array = np.zeros(len(v_data) // 3 * 9, dtype="float32")
             for i in range(len(v_data) // 3):
-                vbo_array[9*i : 9*i+3] = v_data[3*i : 3*i+3]
-                vbo_array[9*i+3 : 9*i+6] = n_data[3*i : 3*i+3]
-                vbo_array[9*i+6 : 9*i+9] = c_data[3*i : 3*i+3]
+                vbo_array[9 * i : 9 * i + 3] = v_data[3 * i : 3 * i + 3]
+                vbo_array[9 * i + 3 : 9 * i + 6] = n_data[3 * i : 3 * i + 3]
+                vbo_array[9 * i + 6 : 9 * i + 9] = c_data[3 * i : 3 * i + 3]
 
             self.vbo_solid = self.ctx.buffer(vbo_array.tobytes())
-            self.vao_solid = self.ctx.vertex_array(self.prog_solid, [(self.vbo_solid, '3f 3f 3f', 'in_position', 'in_normal', 'in_color')])
+            self.vao_solid = self.ctx.vertex_array(
+                self.prog_solid,
+                [(self.vbo_solid, "3f 3f 3f", "in_position", "in_normal", "in_color")],
+            )
 
             self.vbo_lines = self.ctx.buffer(l_data.tobytes())
-            self.vao_lines = self.ctx.simple_vertex_array(self.prog_lines, self.vbo_lines, 'in_position')
+            self.vao_lines = self.ctx.simple_vertex_array(
+                self.prog_lines, self.vbo_lines, "in_position"
+            )
 
             self.cache_key = current_key
             self.cached_num_solid = len(v_data) // 3
@@ -276,33 +303,36 @@ class HeadlessRenderer:
 
         aspect = self.width / self.height
         proj = math_utils.perspective_matrix(45.0, aspect, 0.1, 10.0)
-        view = np.array([
-            [1, 0, 0, 0],
-            [0, 1, 0, 0],
-            [0, 0, 1, -3.0],
-            [0, 0, 0, 1]
-        ], dtype='float32')
+        view = np.array(
+            [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, -3.0], [0, 0, 0, 1]], dtype="float32"
+        )
 
         model = math_utils.rotation_matrix(angle_x, angle_y)
         mvp = proj @ view @ model
         mv = view @ model
 
         # Update matrices in shaders & render (VBO binding is skipped)
-        self.prog_solid['mvp'].write(mvp.T.copy().tobytes())
-        self.prog_solid['mv'].write(mv.T.copy().tobytes())
+        self.prog_solid["mvp"].write(mvp.T.copy().tobytes())
+        self.prog_solid["mv"].write(mv.T.copy().tobytes())
         self.vao_solid.render(moderngl.TRIANGLES)
 
-        self.prog_lines['mvp'].write(mvp.T.copy().tobytes())
+        self.prog_lines["mvp"].write(mvp.T.copy().tobytes())
         self.vao_lines.render(moderngl.LINES)
 
-        raw_data = self.fbo.read(components=3, dtype='f1')
-        img = Image.frombytes('RGB', (self.width, self.height), raw_data)
+        raw_data = self.fbo.read(components=3, dtype="f1")
+        img = Image.frombytes("RGB", (self.width, self.height), raw_data)
         img = img.transpose(Image.FLIP_TOP_BOTTOM)
 
         return img
 
 
-def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags=None, colour_compounds_separately=True):
+def render_grid_view(
+    vertices,
+    solutions,
+    tk_update_callback=None,
+    control_flags=None,
+    colour_compounds_separately=True,
+):
     if not HAS_OPENGL_LIBS:
         print("Required 3D libraries (pygame, moderngl) are missing.")
         return
@@ -319,7 +349,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
 
     ctx = moderngl.create_context()
     ctx.enable(moderngl.DEPTH_TEST)
-    ctx.depth_func = '<='
+    ctx.depth_func = "<="
     ctx.disable(moderngl.CULL_FACE)
 
     vertex_shader_solid = """
@@ -368,8 +398,12 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
     }
     """
 
-    prog_solid = ctx.program(vertex_shader=vertex_shader_solid, fragment_shader=fragment_shader_solid)
-    prog_lines = ctx.program(vertex_shader=vertex_shader_lines, fragment_shader=fragment_shader_lines)
+    prog_solid = ctx.program(
+        vertex_shader=vertex_shader_solid, fragment_shader=fragment_shader_solid
+    )
+    prog_lines = ctx.program(
+        vertex_shader=vertex_shader_lines, fragment_shader=fragment_shader_lines
+    )
 
     vaos = []
     for sol in solutions[:64]:
@@ -417,22 +451,25 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
                 line_vertices.extend(p1)
                 line_vertices.extend(p2)
 
-        v_data = np.array(tri_vertices, dtype='float32')
-        n_data = np.array(tri_normals, dtype='float32')
-        c_data = np.array(tri_colors, dtype='float32')
-        l_data = np.array(line_vertices, dtype='float32')
+        v_data = np.array(tri_vertices, dtype="float32")
+        n_data = np.array(tri_normals, dtype="float32")
+        c_data = np.array(tri_colors, dtype="float32")
+        l_data = np.array(line_vertices, dtype="float32")
 
-        vbo_array = np.zeros(len(v_data) // 3 * 9, dtype='float32')
+        vbo_array = np.zeros(len(v_data) // 3 * 9, dtype="float32")
         for i in range(len(v_data) // 3):
-            vbo_array[9*i : 9*i+3] = v_data[3*i : 3*i+3]
-            vbo_array[9*i+3 : 9*i+6] = n_data[3*i : 3*i+3]
-            vbo_array[9*i+6 : 9*i+9] = c_data[3*i : 3*i+3]
+            vbo_array[9 * i : 9 * i + 3] = v_data[3 * i : 3 * i + 3]
+            vbo_array[9 * i + 3 : 9 * i + 6] = n_data[3 * i : 3 * i + 3]
+            vbo_array[9 * i + 6 : 9 * i + 9] = c_data[3 * i : 3 * i + 3]
 
         vbo_solid = ctx.buffer(vbo_array.tobytes())
-        vao_solid = ctx.vertex_array(prog_solid, [(vbo_solid, '3f 3f 3f', 'in_position', 'in_normal', 'in_color')])
+        vao_solid = ctx.vertex_array(
+            prog_solid,
+            [(vbo_solid, "3f 3f 3f", "in_position", "in_normal", "in_color")],
+        )
 
         vbo_lines = ctx.buffer(l_data.tobytes())
-        vao_lines = ctx.simple_vertex_array(prog_lines, vbo_lines, 'in_position')
+        vao_lines = ctx.simple_vertex_array(prog_lines, vbo_lines, "in_position")
 
         vaos.append((vao_solid, len(v_data) // 3, vao_lines, len(l_data) // 3))
 
@@ -446,7 +483,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
     angle_y = 0.0
 
     while running:
-        if control_flags is not None and not control_flags.get('running', True):
+        if control_flags is not None and not control_flags.get("running", True):
             running = False
             break
 
@@ -477,22 +514,20 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
             aspect = cell_w / cell_h if cell_h > 0 else 1.0
             proj = math_utils.perspective_matrix(45.0, aspect, 0.1, 10.0)
 
-            view = np.array([
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, 1, -3.0],
-                [0, 0, 0, 1]
-            ], dtype='float32')
+            view = np.array(
+                [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, -3.0], [0, 0, 0, 1]],
+                dtype="float32",
+            )
 
             model = math_utils.rotation_matrix(angle_x, angle_y)
             mvp = proj @ view @ model
             mv = view @ model
 
-            prog_solid['mvp'].write(mvp.T.copy().tobytes())
-            prog_solid['mv'].write(mv.T.copy().tobytes())
+            prog_solid["mvp"].write(mvp.T.copy().tobytes())
+            prog_solid["mv"].write(mv.T.copy().tobytes())
             vao_solid.render(moderngl.TRIANGLES)
 
-            prog_lines['mvp'].write(mvp.T.copy().tobytes())
+            prog_lines["mvp"].write(mvp.T.copy().tobytes())
             vao_lines.render(moderngl.LINES)
 
         pygame.display.flip()
@@ -505,9 +540,17 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
 
     pygame.quit()
     if control_flags is not None:
-        control_flags['running'] = False
+        control_flags["running"] = False
 
-def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags=None, is_noble=False, colour_compounds_separately=True):
+
+def render_grid_view(
+    vertices,
+    solutions,
+    tk_update_callback=None,
+    control_flags=None,
+    is_noble=False,
+    colour_compounds_separately=True,
+):
     if not HAS_OPENGL_LIBS:
         print("Required 3D libraries (pygame, moderngl) are missing.")
         return
@@ -524,7 +567,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
 
     ctx = moderngl.create_context()
     ctx.enable(moderngl.DEPTH_TEST)
-    ctx.depth_func = '<='
+    ctx.depth_func = "<="
     ctx.disable(moderngl.CULL_FACE)
 
     vertex_shader_solid = """
@@ -573,8 +616,12 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
     }
     """
 
-    prog_solid = ctx.program(vertex_shader=vertex_shader_solid, fragment_shader=fragment_shader_solid)
-    prog_lines = ctx.program(vertex_shader=vertex_shader_lines, fragment_shader=fragment_shader_lines)
+    prog_solid = ctx.program(
+        vertex_shader=vertex_shader_solid, fragment_shader=fragment_shader_solid
+    )
+    prog_lines = ctx.program(
+        vertex_shader=vertex_shader_lines, fragment_shader=fragment_shader_lines
+    )
 
     vaos = []
     for sol in solutions[:64]:
@@ -628,22 +675,25 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
                 line_vertices.extend(p1)
                 line_vertices.extend(p2)
 
-        v_data = np.array(tri_vertices, dtype='float32')
-        n_data = np.array(tri_normals, dtype='float32')
-        c_data = np.array(tri_colors, dtype='float32')
-        l_data = np.array(line_vertices, dtype='float32')
+        v_data = np.array(tri_vertices, dtype="float32")
+        n_data = np.array(tri_normals, dtype="float32")
+        c_data = np.array(tri_colors, dtype="float32")
+        l_data = np.array(line_vertices, dtype="float32")
 
-        vbo_array = np.zeros(len(v_data) // 3 * 9, dtype='float32')
+        vbo_array = np.zeros(len(v_data) // 3 * 9, dtype="float32")
         for i in range(len(v_data) // 3):
-            vbo_array[9*i : 9*i+3] = v_data[3*i : 3*i+3]
-            vbo_array[9*i+3 : 9*i+6] = n_data[3*i : 3*i+3]
-            vbo_array[9*i+6 : 9*i+9] = c_data[3*i : 3*i+3]
+            vbo_array[9 * i : 9 * i + 3] = v_data[3 * i : 3 * i + 3]
+            vbo_array[9 * i + 3 : 9 * i + 6] = n_data[3 * i : 3 * i + 3]
+            vbo_array[9 * i + 6 : 9 * i + 9] = c_data[3 * i : 3 * i + 3]
 
         vbo_solid = ctx.buffer(vbo_array.tobytes())
-        vao_solid = ctx.vertex_array(prog_solid, [(vbo_solid, '3f 3f 3f', 'in_position', 'in_normal', 'in_color')])
+        vao_solid = ctx.vertex_array(
+            prog_solid,
+            [(vbo_solid, "3f 3f 3f", "in_position", "in_normal", "in_color")],
+        )
 
         vbo_lines = ctx.buffer(l_data.tobytes())
-        vao_lines = ctx.simple_vertex_array(prog_lines, vbo_lines, 'in_position')
+        vao_lines = ctx.simple_vertex_array(prog_lines, vbo_lines, "in_position")
 
         vaos.append((vao_solid, len(v_data) // 3, vao_lines, len(l_data) // 3))
 
@@ -657,7 +707,7 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
     angle_y = 0.0
 
     while running:
-        if control_flags is not None and not control_flags.get('running', True):
+        if control_flags is not None and not control_flags.get("running", True):
             running = False
             break
 
@@ -688,22 +738,20 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
             aspect = cell_w / cell_h if cell_h > 0 else 1.0
             proj = math_utils.perspective_matrix(45.0, aspect, 0.1, 10.0)
 
-            view = np.array([
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, 1, -3.0],
-                [0, 0, 0, 1]
-            ], dtype='float32')
+            view = np.array(
+                [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, -3.0], [0, 0, 0, 1]],
+                dtype="float32",
+            )
 
             model = math_utils.rotation_matrix(angle_x, angle_y)
             mvp = proj @ view @ model
             mv = view @ model
 
-            prog_solid['mvp'].write(mvp.T.copy().tobytes())
-            prog_solid['mv'].write(mv.T.copy().tobytes())
+            prog_solid["mvp"].write(mvp.T.copy().tobytes())
+            prog_solid["mv"].write(mv.T.copy().tobytes())
             vao_solid.render(moderngl.TRIANGLES)
 
-            prog_lines['mvp'].write(mvp.T.copy().tobytes())
+            prog_lines["mvp"].write(mvp.T.copy().tobytes())
             vao_lines.render(moderngl.LINES)
 
         pygame.display.flip()
@@ -716,4 +764,4 @@ def render_grid_view(vertices, solutions, tk_update_callback=None, control_flags
 
     pygame.quit()
     if control_flags is not None:
-        control_flags['running'] = False
+        control_flags["running"] = False

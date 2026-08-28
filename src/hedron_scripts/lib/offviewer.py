@@ -85,7 +85,9 @@ from pygame.locals import (
 # Configuration
 AUTO_ROTATION_SPEED = -0.0002
 SORT_TOLERANCE = 0.0001
-RUN_SYMMETRY_CALCULATION = False  # Set to True to enable symmetry calculation in offcheck
+RUN_SYMMETRY_CALCULATION = (
+    False  # Set to True to enable symmetry calculation in offcheck
+)
 ALPHA = 0.2  # Transparency value for coplanar faces in Enlarged view
 CACHE_THRESHOLD = 10
 FOLDER_POLL_INTERVAL_MS = 1000  # Poll interval to detect new/deleted files
@@ -206,10 +208,10 @@ def triangulate_simple_polygon(indices, verts_2d):
                     if other_idx in (prev_idx, curr_idx, next_idx):
                         continue
                     p_other = verts_2d[other_idx]
-                    if (p_other[0] == p_prev[0] and p_other[1] == p_prev[1]) or (
-                        p_other[0] == p_curr[0] and p_other[1] == p_curr[1]
-                    ) or (
-                        p_other[0] == p_next[0] and p_other[1] == p_next[1]
+                    if (
+                        (p_other[0] == p_prev[0] and p_other[1] == p_prev[1])
+                        or (p_other[0] == p_curr[0] and p_other[1] == p_curr[1])
+                        or (p_other[0] == p_next[0] and p_other[1] == p_next[1])
                     ):
                         continue
                     if is_point_in_tri(p_other, p_prev, p_curr, p_next):
@@ -259,11 +261,15 @@ def load_external_tools():
     for tool in loaded_tools:
         prog = tool.get("program", "")
         action = tool.get("action", "")
-        if action or os.path.exists(prog) or (
-            prog
-            and (
-                shutil.which(prog)
-                or prog.lower() in ("py", "python", "pythonw", "python3")
+        if (
+            action
+            or os.path.exists(prog)
+            or (
+                prog
+                and (
+                    shutil.which(prog)
+                    or prog.lower() in ("py", "python", "pythonw", "python3")
+                )
             )
         ):
             valid_tools.append(tool)
@@ -398,9 +404,7 @@ def load_off(filepath):
             N = np.zeros(3, dtype="f4")
             for j in range(1, n_v - 1):
                 for k in range(j + 1, n_v):
-                    cross_prod = np.cross(
-                        pts_3d[j] - pts_3d[0], pts_3d[k] - pts_3d[0]
-                    )
+                    cross_prod = np.cross(pts_3d[j] - pts_3d[0], pts_3d[k] - pts_3d[0])
                     if np.linalg.norm(cross_prod) > 1e-6:
                         N = cross_prod
                         break
@@ -441,21 +445,25 @@ def load_off(filepath):
 
             pts_2d = []
             for p in pts_3d:
-                pts_2d.append([
-                    float(np.dot(p - pts_3d[0], U)),
-                    float(np.dot(p - pts_3d[0], V)),
-                ])
+                pts_2d.append(
+                    [
+                        float(np.dot(p - pts_3d[0], U)),
+                        float(np.dot(p - pts_3d[0], V)),
+                    ]
+                )
 
             has_intersection = False
             edge_intersections = {k: [] for k in range(n_v)}
 
             local_vertices = []
             for idx in range(n_v):
-                local_vertices.append({
-                    "2d": np.array(pts_2d[idx]),
-                    "3d": pts_3d[idx].tolist(),
-                    "color": vert_colors[face_verts[idx]],
-                })
+                local_vertices.append(
+                    {
+                        "2d": np.array(pts_2d[idx]),
+                        "3d": pts_3d[idx].tolist(),
+                        "color": vert_colors[face_verts[idx]],
+                    }
+                )
 
             for k in range(n_v):
                 for m in range(k + 2, n_v):
@@ -480,11 +488,13 @@ def load_off(filepath):
                                 v_idx = idx
                                 break
                         if v_idx == -1:
-                            local_vertices.append({
-                                "2d": p2d_orig,
-                                "3d": p3d_orig.tolist(),
-                                "color": p_color,
-                            })
+                            local_vertices.append(
+                                {
+                                    "2d": p2d_orig,
+                                    "3d": p3d_orig.tolist(),
+                                    "color": p_color,
+                                }
+                            )
                             v_idx = len(local_vertices) - 1
 
                         edge_intersections[k].append((t, v_idx))
@@ -494,11 +504,13 @@ def load_off(filepath):
                 local_indices = list(range(n_v))
                 local_tris = triangulate_simple_polygon(local_indices, pts_2d)
                 for tri in local_tris:
-                    faces.append([
-                        face_verts[tri[0]],
-                        face_verts[tri[1]],
-                        face_verts[tri[2]],
-                    ])
+                    faces.append(
+                        [
+                            face_verts[tri[0]],
+                            face_verts[tri[1]],
+                            face_verts[tri[2]],
+                        ]
+                    )
                     face_colors.append(f_color)
                     triangle_to_face_map.append(i)
                 continue
@@ -715,9 +727,7 @@ class ModelViewer:
             if use_cache and cache_dir
             else None
         )
-        loaded = (
-            self._try_load_cache(filepath, cache_file) if cache_file else False
-        )
+        loaded = self._try_load_cache(filepath, cache_file) if cache_file else False
 
         if not loaded:
             if not self._build_from_off(filepath, cache_file):
@@ -760,11 +770,13 @@ class ModelViewer:
                 }
             else:
                 self.face_boundary_edges = data.get("face_boundary_edges", {})
-            self.all_edges = list({
-                tuple(sorted(e))
-                for edges in self.face_boundary_edges.values()
-                for e in edges
-            })
+            self.all_edges = list(
+                {
+                    tuple(sorted(e))
+                    for edges in self.face_boundary_edges.values()
+                    for e in edges
+                }
+            )
 
             self._create_gpu_resources(data["component_data"])
             return True
@@ -841,14 +853,14 @@ class ModelViewer:
                         (tri[2], tri[0]),
                     ]:
                         ec[tuple(sorted((u, v)))] += 1
-                self.face_boundary_edges[f_idx] = [
-                    e for e, c in ec.items() if c == 1
-                ]
-        self.all_edges = list({
-            tuple(sorted(e))
-            for edges in self.face_boundary_edges.values()
-            for e in edges
-        })
+                self.face_boundary_edges[f_idx] = [e for e, c in ec.items() if c == 1]
+        self.all_edges = list(
+            {
+                tuple(sorted(e))
+                for edges in self.face_boundary_edges.values()
+                for e in edges
+            }
+        )
 
         self.face_types = defaultdict(list)
         for f_idx in range(self.num_original_faces):
@@ -877,9 +889,7 @@ class ModelViewer:
             )
 
         self.face_type_keys = list(self.face_types.keys())
-        self.representative_faces = [
-            self.face_types[k][0] for k in self.face_type_keys
-        ]
+        self.representative_faces = [self.face_types[k][0] for k in self.face_type_keys]
 
         self._extract_components(
             faces,
@@ -934,9 +944,9 @@ class ModelViewer:
             for f_idx, f_verts in enumerate(self.orig_faces):
                 n = len(f_verts)
                 for i in range(n):
-                    e_to_f[
-                        tuple(sorted((f_verts[i], f_verts[(i + 1) % n])))
-                    ].append(f_idx)
+                    e_to_f[tuple(sorted((f_verts[i], f_verts[(i + 1) % n])))].append(
+                        f_idx
+                    )
             adj = defaultdict(list)
             for f_indices in e_to_f.values():
                 for idx1 in range(len(f_indices)):
@@ -1013,12 +1023,14 @@ class ModelViewer:
                 for e in self.face_boundary_edges.get(tri_to_face[t_idx], [])
             }
             comp_verts = {v for t_idx in comp for v in faces[t_idx]}
-            self._cached_comp_data.append({
-                "vbo_bytes": vbo_comp.ravel().tobytes(),
-                "edges": list(comp_edges),
-                "num_v": len(comp_verts),
-                "num_f": len(set(tri_to_face[t_idx] for t_idx in comp)),
-            })
+            self._cached_comp_data.append(
+                {
+                    "vbo_bytes": vbo_comp.ravel().tobytes(),
+                    "edges": list(comp_edges),
+                    "num_v": len(comp_verts),
+                    "num_f": len(set(tri_to_face[t_idx] for t_idx in comp)),
+                }
+            )
 
     def _create_gpu_resources(self, comp_data):
         self.vbo = self.ctx.buffer(self.vbo_data.tobytes())
@@ -1033,13 +1045,15 @@ class ModelViewer:
                 self.program,
                 [(vbo_comp, "3f 4f 3f", "in_position", "in_color", "in_normal")],
             )
-            self.component_resources.append({
-                "vbo": vbo_comp,
-                "vao": vao_comp,
-                "edges": c["edges"],
-                "num_v": c["num_v"],
-                "num_f": c["num_f"],
-            })
+            self.component_resources.append(
+                {
+                    "vbo": vbo_comp,
+                    "vao": vao_comp,
+                    "edges": c["edges"],
+                    "num_v": c["num_v"],
+                    "num_f": c["num_f"],
+                }
+            )
         self.sphere_local_verts, self.sphere_faces = create_sphere_mesh(
             radius=0.015, rings=8, sectors=8
         )
@@ -1068,14 +1082,14 @@ class ModelViewer:
 
         self.vertex_types = defaultdict(list)
         for v_idx in range(self.num_original_vertices):
-            v_face_types = sorted([
-                face_to_type_idx[f]
-                for f in self.vertex_to_original_faces[v_idx]
-                if f in face_to_type_idx
-            ])
-            self.vertex_types[(len(v_face_types), tuple(v_face_types))].append(
-                v_idx
+            v_face_types = sorted(
+                [
+                    face_to_type_idx[f]
+                    for f in self.vertex_to_original_faces[v_idx]
+                    if f in face_to_type_idx
+                ]
             )
+            self.vertex_types[(len(v_face_types), tuple(v_face_types))].append(v_idx)
 
         self.vertex_type_keys = list(self.vertex_types.keys())
         self.representative_vertices = [
@@ -1213,16 +1227,12 @@ class ModelViewer:
 
                 self.program["u_alpha_override"].value = -1.0
                 start_v, count_v = self.face_ranges[active_face_index]
-                self.vao.render(
-                    moderngl.TRIANGLES, vertices=count_v, first=start_v
-                )
+                self.vao.render(moderngl.TRIANGLES, vertices=count_v, first=start_v)
             elif (
                 active_vertex_index != -1
                 and active_vertex_index in self.vertex_to_original_faces
             ):
-                for orig_face_idx in self.vertex_to_original_faces[
-                    active_vertex_index
-                ]:
+                for orig_face_idx in self.vertex_to_original_faces[active_vertex_index]:
                     if orig_face_idx in self.face_ranges:
                         start_v, count_v = self.face_ranges[orig_face_idx]
                         self.vao.render(
@@ -1302,9 +1312,7 @@ def run_bg_analysis(folder, viewers_list):
                     except Exception:
                         pass
 
-        folder_hash = hashlib.md5(
-            os.path.abspath(folder).encode("utf-8")
-        ).hexdigest()
+        folder_hash = hashlib.md5(os.path.abspath(folder).encode("utf-8")).hexdigest()
         cache_dir = os.path.join(prog_dir, ".cache", folder_hash)
         cache_path = os.path.join(cache_dir, "metrics.json")
 
@@ -1520,9 +1528,7 @@ def poll_folder_changes(state, viewers, ctx, prog_3d):
         return
 
     try:
-        disk_files = {
-            f for f in os.listdir(folder) if f.lower().endswith(".off")
-        }
+        disk_files = {f for f in os.listdir(folder) if f.lower().endswith(".off")}
     except Exception:
         return
 
@@ -1555,10 +1561,7 @@ def poll_folder_changes(state, viewers, ctx, prog_3d):
             v._poll_size = current_size
             continue
 
-        if (
-            abs(v._poll_mtime - current_mtime) >= 1e-3
-            or v._poll_size != current_size
-        ):
+        if abs(v._poll_mtime - current_mtime) >= 1e-3 or v._poll_size != current_size:
             # Invalidate disk caches for the modified file
             geo_cache_path = os.path.join(cache_dir, fname + ".bin")
             if os.path.exists(geo_cache_path):
@@ -1574,9 +1577,7 @@ def poll_folder_changes(state, viewers, ctx, prog_3d):
                         cdata = json.load(cf)
                     if "files" in cdata and fname in cdata["files"]:
                         del cdata["files"][fname]
-                        with open(
-                            metrics_cache_path, "w", encoding="utf-8"
-                        ) as cf:
+                        with open(metrics_cache_path, "w", encoding="utf-8") as cf:
                             json.dump(cdata, cf, indent=4)
                 except Exception:
                     pass
@@ -1631,6 +1632,7 @@ def poll_folder_changes(state, viewers, ctx, prog_3d):
         run_bg_analysis(folder, state["all_viewers"])
         state["needs_redraw"] = 2
 
+
 def get_subfolders(folder):
     subfolders_list = []
     try:
@@ -1664,9 +1666,9 @@ def apply_search_and_sort(state, viewers):
             base_lower = os.path.splitext(v.filename)[0].lower()
             pattern_lower = pattern.lower()
 
-            is_match = fnmatch.fnmatch(
-                name_lower, pattern_lower
-            ) or fnmatch.fnmatch(base_lower, pattern_lower)
+            is_match = fnmatch.fnmatch(name_lower, pattern_lower) or fnmatch.fnmatch(
+                base_lower, pattern_lower
+            )
 
             if negate:
                 if not is_match:
@@ -1692,12 +1694,8 @@ def sort_viewers_by_metric(metric, viewers):
                 v_num = int(
                     float(v.metrics.get("Vertices", v.metrics.get("vertices", 0)))
                 )
-                e_num = int(
-                    float(v.metrics.get("Edges", v.metrics.get("edges", 0)))
-                )
-                f_num = int(
-                    float(v.metrics.get("Faces", v.metrics.get("faces", 0)))
-                )
+                e_num = int(float(v.metrics.get("Edges", v.metrics.get("edges", 0))))
+                f_num = int(float(v.metrics.get("Faces", v.metrics.get("faces", 0))))
                 if v_num > 0 or e_num > 0 or f_num > 0:
                     return (0, v_num, e_num, f_num)
             except (ValueError, TypeError):
@@ -1889,9 +1887,9 @@ def _perform_full_refresh(state, viewers, subfolders, ctx, prog_3d):
             print(f"Error clearing cache: {e}")
 
     current_file = None
-    if state["fullscreen_index"] != -1 and 0 <= state[
-        "fullscreen_index"
-    ] < len(viewers):
+    if state["fullscreen_index"] != -1 and 0 <= state["fullscreen_index"] < len(
+        viewers
+    ):
         current_file = viewers[state["fullscreen_index"]].filename
 
     state["all_viewers"] = load_viewers_from_folder(
@@ -1994,9 +1992,9 @@ def _handle_keydown(event, state, viewers, subfolders, ctx, prog_3d):
         elif event.key == K_f:
             num_rep = len(v.representative_faces)
             if num_rep > 0:
-                state["active_rep_idx"] = (
-                    (state["active_rep_idx"] + 2) % (num_rep + 1) - 1
-                )
+                state["active_rep_idx"] = (state["active_rep_idx"] + 2) % (
+                    num_rep + 1
+                ) - 1
                 state["active_face_index"] = (
                     v.representative_faces[state["active_rep_idx"]]
                     if state["active_rep_idx"] != -1
@@ -2010,8 +2008,8 @@ def _handle_keydown(event, state, viewers, subfolders, ctx, prog_3d):
             num_rep_v = len(v.representative_vertices)
             if num_rep_v > 0:
                 state["active_vertex_rep_idx"] = (
-                    (state["active_vertex_rep_idx"] + 2) % (num_rep_v + 1) - 1
-                )
+                    state["active_vertex_rep_idx"] + 2
+                ) % (num_rep_v + 1) - 1
                 state["active_vertex_index"] = (
                     v.representative_vertices[state["active_vertex_rep_idx"]]
                     if state["active_vertex_rep_idx"] != -1
@@ -2027,9 +2025,9 @@ def _handle_keydown(event, state, viewers, subfolders, ctx, prog_3d):
         elif event.key == K_c:
             num_parts = len(v.component_resources)
             if num_parts > 0:
-                state["active_part_idx"] = (
-                    (state["active_part_idx"] + 2) % (num_parts + 1) - 1
-                )
+                state["active_part_idx"] = (state["active_part_idx"] + 2) % (
+                    num_parts + 1
+                ) - 1
                 state["active_face_index"] = -1
                 state["active_rep_idx"] = -1
                 state["active_vertex_index"] = -1
@@ -2047,9 +2045,7 @@ def _handle_keydown(event, state, viewers, subfolders, ctx, prog_3d):
             state["needs_redraw"] = 2
 
 
-def _handle_context_menu_action(
-    relative_y, target_v, state, viewers, ctx, prog_3d
-):
+def _handle_context_menu_action(relative_y, target_v, state, viewers, ctx, prog_3d):
     import subprocess
 
     root_temp = tk.Tk()
@@ -2094,11 +2090,7 @@ def _handle_context_menu_action(
         tool = state["external_tools"][tool_idx]
         filepath = target_v.filepath
         try:
-            cmd = (
-                [tool["program"]]
-                + tool.get("args", [])
-                + [os.path.abspath(filepath)]
-            )
+            cmd = [tool["program"]] + tool.get("args", []) + [os.path.abspath(filepath)]
             proc = subprocess.Popen(cmd)
             if tool["prompt"].strip().lower().startswith("edit"):
                 t = threading.Thread(
@@ -2108,32 +2100,22 @@ def _handle_context_menu_action(
                 )
                 t.start()
         except Exception as e:
-            messagebox.showerror(
-                "Error", f"Could not launch {tool['prompt']}: {e}"
-            )
+            messagebox.showerror("Error", f"Could not launch {tool['prompt']}: {e}")
 
     root_temp.update()
     root_temp.destroy()
     state["context_menu_open"] = False
 
 
-def _handle_mouse_scroll(
-    event_button, mx, my, win_h, sidebar_w, top_bar_h, state
-):
+def _handle_mouse_scroll(event_button, mx, my, win_h, sidebar_w, top_bar_h, state):
     if event_button == 4:
         if state["dropdown_open"] and pygame.Rect(
             15, 102, 170, min(350, win_h - 120)
         ).collidepoint(mx, my):
             state["dropdown_scroll"] = max(0, state["dropdown_scroll"] - 20)
         elif mx <= sidebar_w and my > 160:
-            state["subfolder_scroll_y"] = max(
-                0.0, state["subfolder_scroll_y"] - 25
-            )
-        elif (
-            state["fullscreen_index"] == -1
-            and mx > sidebar_w
-            and my > top_bar_h
-        ):
+            state["subfolder_scroll_y"] = max(0.0, state["subfolder_scroll_y"] - 25)
+        elif state["fullscreen_index"] == -1 and mx > sidebar_w and my > top_bar_h:
             state["scroll_y"] = max(
                 0.0, min(state["scroll_y"] - 50, state["max_scroll"])
             )
@@ -2143,19 +2125,13 @@ def _handle_mouse_scroll(
         ).collidepoint(mx, my):
             all_opts_len = len(["Default"] + state["sort_headers"])
             max_dp_scroll = max(0, all_opts_len * 20 - min(350, win_h - 120))
-            state["dropdown_scroll"] = min(
-                max_dp_scroll, state["dropdown_scroll"] + 20
-            )
+            state["dropdown_scroll"] = min(max_dp_scroll, state["dropdown_scroll"] + 20)
         elif mx <= sidebar_w and my > 160:
             state["subfolder_scroll_y"] = min(
                 state.get("max_subfolder_scroll", 0),
                 state["subfolder_scroll_y"] + 25,
             )
-        elif (
-            state["fullscreen_index"] == -1
-            and mx > sidebar_w
-            and my > top_bar_h
-        ):
+        elif state["fullscreen_index"] == -1 and mx > sidebar_w and my > top_bar_h:
             state["scroll_y"] = max(
                 0.0, min(state["scroll_y"] + 50, state["max_scroll"])
             )
@@ -2245,9 +2221,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                 event.size, pygame.OPENGL | pygame.DOUBLEBUF | pygame.RESIZABLE
             )
         elif event.type == pygame.DROPFILE:
-            _handle_drop_file(
-                event.file, state, viewers, subfolders, ctx, prog_3d
-            )
+            _handle_drop_file(event.file, state, viewers, subfolders, ctx, prog_3d)
         elif event.type == KEYDOWN:
             _handle_keydown(event, state, viewers, subfolders, ctx, prog_3d)
         elif event.type == MOUSEBUTTONDOWN:
@@ -2290,9 +2264,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     next_btn = pygame.Rect(win_w - 160, win_h - 45, 40, 30)
                     grid_btn = pygame.Rect(win_w - 110, win_h - 45, 90, 30)
 
-                    if prev_btn.collidepoint(mx, my) or next_btn.collidepoint(
-                        mx, my
-                    ):
+                    if prev_btn.collidepoint(mx, my) or next_btn.collidepoint(mx, my):
                         step = -1 if prev_btn.collidepoint(mx, my) else 1
                         new_idx = (state["fullscreen_index"] + step) % len(viewers)
                         state["fullscreen_index"] = new_idx
@@ -2325,9 +2297,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     dp_h = min(350, win_h - 120)
                     if pygame.Rect(15, 102, 170, dp_h).collidepoint(mx, my):
                         all_opts = ["Default"] + state["sort_headers"]
-                        clicked_idx = (
-                            my - 102 + state["dropdown_scroll"]
-                        ) // 20
+                        clicked_idx = (my - 102 + state["dropdown_scroll"]) // 20
                         if 0 <= clicked_idx < len(all_opts):
                             state["selected_sort_metric"] = all_opts[clicked_idx]
                             sort_viewers_by_metric(
@@ -2338,9 +2308,9 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     else:
                         state["dropdown_open"] = False
 
-                if not event_handled and pygame.Rect(
-                    15, 32, 170, 18
-                ).collidepoint(mx, my):
+                if not event_handled and pygame.Rect(15, 32, 170, 18).collidepoint(
+                    mx, my
+                ):
                     state["auto_rotate"] = not state["auto_rotate"]
                     event_handled = True
 
@@ -2352,24 +2322,20 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     state["dropdown_open"] = not state["dropdown_open"]
                     event_handled = True
 
-                if not event_handled and pygame.Rect(
-                    15, 103, 170, 16
-                ).collidepoint(mx, my):
+                if not event_handled and pygame.Rect(15, 103, 170, 16).collidepoint(
+                    mx, my
+                ):
                     _delete_duplicates(state, viewers)
                     event_handled = True
 
-                if not event_handled and pygame.Rect(
-                    15, 125, 170, 24
-                ).collidepoint(mx, my):
-                    _perform_full_refresh(
-                        state, viewers, subfolders, ctx, prog_3d
-                    )
+                if not event_handled and pygame.Rect(15, 125, 170, 24).collidepoint(
+                    mx, my
+                ):
+                    _perform_full_refresh(state, viewers, subfolders, ctx, prog_3d)
                     event_handled = True
 
                 if not event_handled and state["fullscreen_index"] == -1:
-                    if pygame.Rect(win_w - 115, 30, 100, 30).collidepoint(
-                        mx, my
-                    ):
+                    if pygame.Rect(win_w - 115, 30, 100, 30).collidepoint(mx, my):
                         root_temp = tk.Tk()
                         root_temp.option_add("*Entry.width", 60)
                         root_temp.withdraw()
@@ -2387,9 +2353,9 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                         root_temp.update()
                         root_temp.destroy()
                         event_handled = True
-                    elif pygame.Rect(
-                        sidebar_w + 15, 30, grid_w - 150, 30
-                    ).collidepoint(mx, my):
+                    elif pygame.Rect(sidebar_w + 15, 30, grid_w - 150, 30).collidepoint(
+                        mx, my
+                    ):
                         root_temp = tk.Tk()
                         root_temp.option_add("*Entry.width", 80)
                         root_temp.withdraw()
@@ -2407,9 +2373,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                 )
                                 state["search_query"] = ""
                                 apply_search_and_sort(state, viewers)
-                                subfolders[:] = get_subfolders(
-                                    state["current_folder"]
-                                )
+                                subfolders[:] = get_subfolders(state["current_folder"])
                                 state["scroll_y"] = 0.0
                                 state["subfolder_scroll_y"] = 0.0
                                 state["hovered_index"] = -1
@@ -2450,14 +2414,10 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                     ):
                         bar_h = max(
                             30,
-                            int(
-                                (grid_h / (state["max_scroll"] + grid_h))
-                                * grid_h
-                            ),
+                            int((grid_h / (state["max_scroll"] + grid_h)) * grid_h),
                         )
                         bar_y = top_bar_h + int(
-                            (state["scroll_y"] / state["max_scroll"])
-                            * (grid_h - bar_h)
+                            (state["scroll_y"] / state["max_scroll"]) * (grid_h - bar_h)
                         )
                         state["scrollbar_dragging"] = True
                         state["scrollbar_click_offset"] = (
@@ -2471,43 +2431,26 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                 0.0,
                                 min(
                                     1.0,
-                                    (
-                                        my
-                                        - top_bar_h
-                                        - state["scrollbar_click_offset"]
-                                    )
+                                    (my - top_bar_h - state["scrollbar_click_offset"])
                                     / track_h,
                                 ),
                             )
                             state["scroll_y"] = ratio * state["max_scroll"]
                     elif mx <= sidebar_w and my > 160:
-                        sub_rect = pygame.Rect(
-                            10, 185, sidebar_w - 20, win_h - 195
-                        )
+                        sub_rect = pygame.Rect(10, 185, sidebar_w - 20, win_h - 195)
                         if sub_rect.collidepoint(mx, my):
                             clicked_idx = int(
-                                (
-                                    my
-                                    - (
-                                        185
-                                        - state.get("subfolder_scroll_y", 0)
-                                    )
-                                )
-                                // 25
+                                (my - (185 - state.get("subfolder_scroll_y", 0))) // 25
                             )
                             if 0 <= clicked_idx < len(subfolders):
                                 target = subfolders[clicked_idx]
                                 state["current_folder"] = (
                                     os.path.abspath(
-                                        os.path.dirname(
-                                            state["current_folder"]
-                                        )
+                                        os.path.dirname(state["current_folder"])
                                     )
                                     if target == ".."
                                     else os.path.abspath(
-                                        os.path.join(
-                                            state["current_folder"], target
-                                        )
+                                        os.path.join(state["current_folder"], target)
                                     )
                                 )
                                 state["all_viewers"] = load_viewers_from_folder(
@@ -2515,9 +2458,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                 )
                                 state["search_query"] = ""
                                 apply_search_and_sort(state, viewers)
-                                subfolders[:] = get_subfolders(
-                                    state["current_folder"]
-                                )
+                                subfolders[:] = get_subfolders(state["current_folder"])
                                 state["scroll_y"] = 0.0
                                 state["subfolder_scroll_y"] = 0.0
                                 state["hovered_index"] = -1
@@ -2563,11 +2504,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                                 if state["fullscreen_index"] != -1
                                 else state["hovered_index"]
                             )
-                            if (
-                                mx > sidebar_w
-                                and my > top_bar_h
-                                and drag_idx != -1
-                            ):
+                            if mx > sidebar_w and my > top_bar_h and drag_idx != -1:
                                 state["dragging"] = True
                                 state["dragged_index"] = drag_idx
                                 pygame.mouse.get_rel()
@@ -2583,9 +2520,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
             if state["scrollbar_dragging"] and state["max_scroll"] > 0:
                 bar_h = max(
                     30,
-                    int(
-                        (grid_h / (state["max_scroll"] + grid_h)) * grid_h
-                    ),
+                    int((grid_h / (state["max_scroll"] + grid_h)) * grid_h),
                 )
                 track_h = grid_h - bar_h
                 if track_h > 0:
@@ -2593,11 +2528,7 @@ def handle_events(events, state, viewers, subfolders, ctx, prog_3d):
                         0.0,
                         min(
                             1.0,
-                            (
-                                my
-                                - top_bar_h
-                                - state["scrollbar_click_offset"]
-                            )
+                            (my - top_bar_h - state["scrollbar_click_offset"])
                             / track_h,
                         ),
                     )
@@ -2629,9 +2560,7 @@ def draw_ui_surface(
     ui_surf = pygame.Surface((win_w, win_h), pygame.SRCALPHA)
     ui_surf.fill((0, 0, 0, 0))
 
-    pygame.draw.rect(
-        ui_surf, (255, 255, 255), (sidebar_w, top_bar_h, grid_w, grid_h)
-    )
+    pygame.draw.rect(ui_surf, (255, 255, 255), (sidebar_w, top_bar_h, grid_w, grid_h))
 
     if state["fullscreen_index"] != -1:
         if 0 <= state["fullscreen_index"] < len(viewers):
@@ -2661,9 +2590,7 @@ def draw_ui_surface(
 
             view_h = win_h - top_bar_h - 60
             report_active = bool(state.get("active_report"))
-            viewport_w_hole = (
-                grid_w - 440 - 30 if report_active else grid_w - 22
-            )
+            viewport_w_hole = grid_w - 440 - 30 if report_active else grid_w - 22
 
             ui_surf.fill(
                 (0, 0, 0, 0),
@@ -2789,12 +2716,7 @@ def draw_ui_surface(
             col = i % cols
 
             x = sidebar_w + padding + col * (item_w + padding)
-            y = (
-                top_bar_h
-                + padding
-                + row * (item_h + padding)
-                - int(state["scroll_y"])
-            )
+            y = top_bar_h + padding + row * (item_h + padding) - int(state["scroll_y"])
 
             current_val = (
                 v.metrics.get(selected_metric, None)
@@ -2849,16 +2771,12 @@ def draw_ui_surface(
 
             if selected_metric != "Default":
                 lbl = font.render(v.filename, True, (40, 40, 40))
-                lbl_rect = lbl.get_rect(
-                    center=(x + item_w // 2, y + item_w + 15)
-                )
+                lbl_rect = lbl.get_rect(center=(x + item_w // 2, y + item_w + 15))
                 if top_bar_h < lbl_rect.centery < win_h:
                     ui_surf.blit(lbl, lbl_rect)
                 m_val = format_sort_value(v.metrics.get(selected_metric, ""))
                 m_lbl = font.render(m_val, True, (100, 100, 100))
-                m_rect = m_lbl.get_rect(
-                    center=(x + item_w // 2, y + item_w + 32)
-                )
+                m_rect = m_lbl.get_rect(center=(x + item_w // 2, y + item_w + 32))
                 if top_bar_h < m_rect.centery < win_h:
                     ui_surf.blit(m_lbl, m_rect)
             else:
@@ -2872,12 +2790,8 @@ def draw_ui_surface(
             prev_val = current_val
 
     pygame.draw.rect(ui_surf, (252, 252, 252), (0, 0, sidebar_w, win_h))
-    pygame.draw.rect(
-        ui_surf, (243, 243, 243), (sidebar_w, 0, grid_w, top_bar_h)
-    )
-    pygame.draw.line(
-        ui_surf, (220, 220, 220), (sidebar_w, 0), (sidebar_w, win_h), 1
-    )
+    pygame.draw.rect(ui_surf, (243, 243, 243), (sidebar_w, 0, grid_w, top_bar_h))
+    pygame.draw.line(ui_surf, (220, 220, 220), (sidebar_w, 0), (sidebar_w, win_h), 1)
     pygame.draw.line(
         ui_surf, (220, 220, 220), (sidebar_w, top_bar_h), (win_w, top_bar_h), 1
     )
@@ -2896,19 +2810,9 @@ def draw_ui_surface(
     txt_sort_lbl = font.render("Sort models by:", True, (120, 120, 120))
     ui_surf.blit(txt_sort_lbl, (15, 58))
 
-    bg_drop = (
-        (255, 255, 255)
-        if state["sort_dropdown_enabled"]
-        else (240, 240, 240)
-    )
-    border_drop = (
-        (180, 180, 180)
-        if state["sort_dropdown_enabled"]
-        else (220, 220, 220)
-    )
-    text_drop_col = (
-        (50, 50, 50) if state["sort_dropdown_enabled"] else (160, 160, 160)
-    )
+    bg_drop = (255, 255, 255) if state["sort_dropdown_enabled"] else (240, 240, 240)
+    border_drop = (180, 180, 180) if state["sort_dropdown_enabled"] else (220, 220, 220)
+    text_drop_col = (50, 50, 50) if state["sort_dropdown_enabled"] else (160, 160, 160)
 
     pygame.draw.rect(ui_surf, bg_drop, (15, 75, 170, 22))
     pygame.draw.rect(ui_surf, border_drop, (15, 75, 170, 22), 1)
@@ -2916,9 +2820,7 @@ def draw_ui_surface(
     curr_val_txt = font.render(state["selected_sort_metric"], True, text_drop_col)
     ui_surf.blit(curr_val_txt, (22, 78))
 
-    arrow_col = (
-        (100, 100, 100) if state["sort_dropdown_enabled"] else (180, 180, 180)
-    )
+    arrow_col = (100, 100, 100) if state["sort_dropdown_enabled"] else (180, 180, 180)
     pygame.draw.polygon(ui_surf, arrow_col, [(170, 83), (176, 83), (173, 88)])
 
     pygame.draw.rect(ui_surf, (230, 230, 230), (15, 105, 12, 12))
@@ -2928,19 +2830,11 @@ def draw_ui_surface(
 
     refresh_rect = pygame.Rect(15, 125, 170, 24)
     if refresh_rect.collidepoint(mx, my):
-        pygame.draw.rect(
-            ui_surf, (220, 230, 245), refresh_rect, border_radius=4
-        )
-        pygame.draw.rect(
-            ui_surf, (100, 150, 220), refresh_rect, 1, border_radius=4
-        )
+        pygame.draw.rect(ui_surf, (220, 230, 245), refresh_rect, border_radius=4)
+        pygame.draw.rect(ui_surf, (100, 150, 220), refresh_rect, 1, border_radius=4)
     else:
-        pygame.draw.rect(
-            ui_surf, (240, 240, 240), refresh_rect, border_radius=4
-        )
-        pygame.draw.rect(
-            ui_surf, (180, 180, 180), refresh_rect, 1, border_radius=4
-        )
+        pygame.draw.rect(ui_surf, (240, 240, 240), refresh_rect, border_radius=4)
+        pygame.draw.rect(ui_surf, (180, 180, 180), refresh_rect, 1, border_radius=4)
     refresh_txt = font_bold.render("Refresh Files", True, (50, 50, 50))
     ui_surf.blit(refresh_txt, refresh_txt.get_rect(center=refresh_rect.center))
 
@@ -2991,24 +2885,17 @@ def draw_ui_surface(
         pygame.draw.rect(ui_surf, (245, 245, 245), (sb_x, sb_y, sb_w, sb_h))
         bar_h = max(
             15,
-            int(
-                (sb_h / (state["max_subfolder_scroll"] + sb_h)) * sb_h
-            ),
+            int((sb_h / (state["max_subfolder_scroll"] + sb_h)) * sb_h),
         )
         bar_y = sb_y + int(
-            (
-                state["subfolder_scroll_y"]
-                / state["max_subfolder_scroll"]
-            )
+            (state["subfolder_scroll_y"] / state["max_subfolder_scroll"])
             * (sb_h - bar_h)
         )
         pygame.draw.rect(
             ui_surf, (200, 200, 200), (sb_x, bar_y, sb_w, bar_h), border_radius=3
         )
 
-    pygame.draw.rect(
-        ui_surf, (255, 255, 255), (sidebar_w + 15, 30, grid_w - 150, 30)
-    )
+    pygame.draw.rect(ui_surf, (255, 255, 255), (sidebar_w + 15, 30, grid_w - 150, 30))
     pygame.draw.rect(
         ui_surf, (200, 200, 200), (sidebar_w + 15, 30, grid_w - 150, 30), 1
     )
@@ -3034,9 +2921,7 @@ def draw_ui_surface(
         bar_y = top_bar_h + int(
             (state["scroll_y"] / state["max_scroll"]) * (grid_h - bar_h)
         )
-        pygame.draw.rect(
-            ui_surf, (240, 240, 240), (win_w - 12, top_bar_h, 12, grid_h)
-        )
+        pygame.draw.rect(ui_surf, (240, 240, 240), (win_w - 12, top_bar_h, 12, grid_h))
         pygame.draw.rect(
             ui_surf,
             (200, 200, 200),
@@ -3049,12 +2934,8 @@ def draw_ui_surface(
         dropdown_max_h = min(350, win_h - 120)
         opt_h = 20
 
-        pygame.draw.rect(
-            ui_surf, (255, 255, 255), (15, 102, 170, dropdown_max_h)
-        )
-        pygame.draw.rect(
-            ui_surf, (150, 150, 150), (15, 102, 170, dropdown_max_h), 1
-        )
+        pygame.draw.rect(ui_surf, (255, 255, 255), (15, 102, 170, dropdown_max_h))
+        pygame.draw.rect(ui_surf, (150, 150, 150), (15, 102, 170, dropdown_max_h), 1)
 
         clip_prev = ui_surf.get_clip()
         ui_surf.set_clip(pygame.Rect(16, 103, 168, dropdown_max_h - 2))
@@ -3064,11 +2945,9 @@ def draw_ui_surface(
             if oy + opt_h < 102 or oy > 102 + dropdown_max_h:
                 continue
 
-            is_opt_hov = pygame.Rect(
-                15, oy, 170, opt_h
-            ).collidepoint(mx, my) and pygame.Rect(
-                15, 102, 170, dropdown_max_h
-            ).collidepoint(mx, my)
+            is_opt_hov = pygame.Rect(15, oy, 170, opt_h).collidepoint(
+                mx, my
+            ) and pygame.Rect(15, 102, 170, dropdown_max_h).collidepoint(mx, my)
             if is_opt_hov:
                 pygame.draw.rect(ui_surf, (230, 240, 250), (16, oy, 168, opt_h))
 
@@ -3288,9 +3167,7 @@ def main():
             ]
             use_cache = len(off_files) > CACHE_THRESHOLD
             cache_dir = (
-                os.path.join(prog_dir, ".cache", folder_hash)
-                if use_cache
-                else None
+                os.path.join(prog_dir, ".cache", folder_hash) if use_cache else None
             )
 
             new_v = ModelViewer(
@@ -3302,15 +3179,11 @@ def main():
             )
             if new_v.valid:
                 for idx, v in enumerate(state["all_viewers"]):
-                    if os.path.abspath(v.filepath) == os.path.abspath(
-                        reload_path
-                    ):
+                    if os.path.abspath(v.filepath) == os.path.abspath(reload_path):
                         state["all_viewers"][idx] = new_v
                         break
                 for i, f_v in enumerate(viewers):
-                    if os.path.abspath(f_v.filepath) == os.path.abspath(
-                        reload_path
-                    ):
+                    if os.path.abspath(f_v.filepath) == os.path.abspath(reload_path):
                         viewers[i] = new_v
                         break
             run_bg_analysis(state["current_folder"], state["all_viewers"])
@@ -3330,9 +3203,7 @@ def main():
 
         cols = max(1, (grid_w - padding) // (item_w + padding))
         total_rows = math.ceil(len(viewers) / cols)
-        state["max_scroll"] = max(
-            0, total_rows * (item_h + padding) + padding - grid_h
-        )
+        state["max_scroll"] = max(0, total_rows * (item_h + padding) + padding - grid_h)
         state["scroll_y"] = max(0.0, min(state["scroll_y"], state["max_scroll"]))
 
         sub_panel_h = win_h - 195
@@ -3342,11 +3213,13 @@ def main():
         )
 
         try:
-            off_files_count = len([
-                f
-                for f in os.listdir(state["current_folder"])
-                if f.lower().endswith(".off")
-            ])
+            off_files_count = len(
+                [
+                    f
+                    for f in os.listdir(state["current_folder"])
+                    if f.lower().endswith(".off")
+                ]
+            )
         except Exception:
             off_files_count = 0
 
@@ -3494,9 +3367,7 @@ def main():
                             int((item_w - 2) * sx),
                             int(clamped_h * sy),
                         )
-                        grid_edge_mode = (
-                            2 if state.get("grid_edges_on", False) else 0
-                        )
+                        grid_edge_mode = 2 if state.get("grid_edges_on", False) else 0
                         v.render_3d(
                             (
                                 int((x + 1) * sx),

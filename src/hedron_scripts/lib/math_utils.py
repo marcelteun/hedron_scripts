@@ -18,7 +18,8 @@ COLOR_MAP = {
     5: [25, 255, 50],
     6: [0, 225, 225],
     8: [225, 25, 225],
-    10: [255, 25, 25]}
+    10: [255, 25, 25],
+}
 DEFAULT_COLOR = [255, 225, 0]
 SUBGROUP_CACHE = {}
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "__pycache__")
@@ -29,27 +30,39 @@ CACHE_FILE = os.path.join(CACHE_DIR, "facetings_cache.dat")
 def perspective_matrix(fov_deg, aspect, near, far):
     fov_rad = math.radians(fov_deg)
     f = 1.0 / math.tan(fov_rad / 2.0)
-    return np.array([
-        [f / aspect, 0.0, 0.0, 0.0],
-        [0.0, f, 0.0, 0.0],
-        [0.0, 0.0, (far + near) / (near - far), (2.0 * far * near) / (near - far)],
-        [0.0, 0.0, -1.0, 0.0]], dtype=np.float32)
+    return np.array(
+        [
+            [f / aspect, 0.0, 0.0, 0.0],
+            [0.0, f, 0.0, 0.0],
+            [0.0, 0.0, (far + near) / (near - far), (2.0 * far * near) / (near - far)],
+            [0.0, 0.0, -1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
 
 
 @njit(cache=True)
 def rotation_matrix(rx, ry):
     cx, sx = math.cos(rx), math.sin(rx)
     cy, sy = math.cos(ry), math.sin(ry)
-    rx_mat = np.array([
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, cx, -sx, 0.0],
-        [0.0, sx, cx, 0.0],
-        [0.0, 0.0, 0.0, 1.0]], dtype=np.float32)
-    ry_mat = np.array([
-        [cy, 0.0, sy, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [-sy, 0.0, cy, 0.0],
-        [0.0, 0.0, 0.0, 1.0]], dtype=np.float32)
+    rx_mat = np.array(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, cx, -sx, 0.0],
+            [0.0, sx, cx, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    ry_mat = np.array(
+        [
+            [cy, 0.0, sy, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [-sy, 0.0, cy, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
     return ry_mat @ rx_mat
 
 
@@ -57,7 +70,11 @@ def read_off(filepath, tol=1e-8):
     with open(filepath, "r") as f:
         lines = f.readlines()
 
-    lines = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
+    lines = [
+        line.strip()
+        for line in lines
+        if line.strip() and not line.strip().startswith("#")
+    ]
     if not lines:
         raise ValueError("Empty or invalid OFF file.")
 
@@ -84,14 +101,18 @@ def read_off(filepath, tol=1e-8):
     for i in range(start_idx + n_verts, start_idx + n_verts + n_faces):
         parts = lines[i].split()
         n_f_verts = int(parts[0])
-        raw_faces.append([int(x) for x in parts[1:1 + n_f_verts]])
+        raw_faces.append([int(x) for x in parts[1 : 1 + n_f_verts]])
 
     unique_vertices = []
     index_map = {}
     for idx, v in enumerate(raw_vertices):
         match_idx = -1
         for u_idx, uv in enumerate(unique_vertices):
-            if math.isclose(v[0], uv[0], abs_tol=tol) and math.isclose(v[1], uv[1], abs_tol=tol) and math.isclose(v[2], uv[2], abs_tol=tol):
+            if (
+                math.isclose(v[0], uv[0], abs_tol=tol)
+                and math.isclose(v[1], uv[1], abs_tol=tol)
+                and math.isclose(v[2], uv[2], abs_tol=tol)
+            ):
                 match_idx = u_idx
                 break
         if match_idx == -1:
@@ -120,7 +141,9 @@ def write_off(filepath, vertices, faces):
         f.write("OFF\n")
         f.write(f"{len(vertices)} {len(faces)} 0\n")
         f.writelines(f"{v[0]:.16f} {v[1]:.16f} {v[2]:.16f}\n" for v in vertices)
-        f.writelines(f"{len(face)} " + " ".join(map(str, face)) + "\n" for face in faces)
+        f.writelines(
+            f"{len(face)} " + " ".join(map(str, face)) + "\n" for face in faces
+        )
 
 
 # File: facetings_math.py
@@ -141,6 +164,7 @@ def normalize_face(face):
     shifted = face[min_idx:] + face[:min_idx]
     rev = (shifted[0],) + shifted[:0:-1]
     return shifted if shifted < rev else rev
+
 
 def find_cycles(vertices, adj, max_len, start_vertex=0, tol=1e-4):
     cycles = set()
@@ -197,7 +221,12 @@ def ccw(a, b, c):
 
 @njit(cache=True)
 def intersect(p1, p2, p3, p4):
-    if (p1[0] == p3[0] and p1[1] == p3[1]) or (p1[0] == p4[0] and p1[1] == p4[1]) or (p2[0] == p3[0] and p2[1] == p3[1]) or (p2[0] == p4[0] and p2[1] == p4[1]):
+    if (
+        (p1[0] == p3[0] and p1[1] == p3[1])
+        or (p1[0] == p4[0] and p1[1] == p4[1])
+        or (p2[0] == p3[0] and p2[1] == p3[1])
+        or (p2[0] == p4[0] and p2[1] == p4[1])
+    ):
         return False
     return (ccw(p1, p3, p4) != ccw(p2, p3, p4)) and (ccw(p1, p2, p3) != ccw(p1, p2, p4))
 
@@ -274,7 +303,7 @@ def find_planar_cycles_numba(vertices, on_plane, k):
                 if valid and path[1] < path[k - 1]:
                     if results_count >= len(results):
                         new_results = np.empty((len(results) * 2, k), dtype=np.int32)
-                        new_results[:len(results)] = results
+                        new_results[: len(results)] = results
                         results = new_results
                     for i in range(k):
                         results[results_count, i] = on_plane[path[i]]
@@ -344,7 +373,9 @@ def find_all_planar_faces(vertices, symmetries, tol=1e-4, log_callback=None):
     v0 = 0
 
     if log_callback:
-        log_callback("Detecting representative coplanar vertex subsets (fixed-vertex optimization)...")
+        log_callback(
+            "Detecting representative coplanar vertex subsets (fixed-vertex optimization)..."
+        )
 
     for j in range(1, n):
         for k in range(j + 1, n):
@@ -364,11 +395,20 @@ def find_all_planar_faces(vertices, symmetries, tol=1e-4, log_callback=None):
             if abs(d) < tol:
                 continue
 
-            if normal[0] < -tol or (abs(normal[0]) < tol and normal[1] < -tol) or (abs(normal[0]) < tol and abs(normal[1]) < tol and normal[2] < -tol):
+            if (
+                normal[0] < -tol
+                or (abs(normal[0]) < tol and normal[1] < -tol)
+                or (abs(normal[0]) < tol and abs(normal[1]) < tol and normal[2] < -tol)
+            ):
                 normal = -normal
                 d = -d
 
-            key = (round(normal[0], 6), round(normal[1], 6), round(normal[2], 6), round(d, 6))
+            key = (
+                round(normal[0], 6),
+                round(normal[1], 6),
+                round(normal[2], 6),
+                round(d, 6),
+            )
             if key not in seen_rep:
                 seen_rep.add(key)
                 rep_planes.append((normal, d))
@@ -389,7 +429,9 @@ def find_all_planar_faces(vertices, symmetries, tol=1e-4, log_callback=None):
     candidate_faces = set()
 
     if log_callback:
-        log_callback(f"Searching {len(rep_planes)} representative plane(s) for noble candidates...")
+        log_callback(
+            f"Searching {len(rep_planes)} representative plane(s) for noble candidates..."
+        )
 
     v_dots = np.array([np.dot(vertices, normal) for normal, _ in rep_planes])
 
@@ -438,7 +480,9 @@ def find_all_regular_faces(vertices, symmetries, tol=1e-4, max_k=10, log_callbac
 
     for idx, a in enumerate(unique_dists):
         if log_callback:
-            log_callback(f"Analyzing distance group {idx + 1}/{len(unique_dists)} (edge length: {a:.4f})...")
+            log_callback(
+                f"Analyzing distance group {idx + 1}/{len(unique_dists)} (edge length: {a:.4f})..."
+            )
 
         adj = {i: [] for i in range(n)}
         for i in range(n):
@@ -544,18 +588,33 @@ def get_symmetry_group(vertices, tol=SYMMETRY_TOLERANCE):
     u0_candidates = [i for i in range(n) if abs(np.linalg.norm(V[i]) - d0) < tol]
     for u0_i in u0_candidates:
         u0 = V[u0_i]
-        u1_candidates = [i for i in range(n) if abs(np.linalg.norm(V[i]) - d1) < tol and abs(np.linalg.norm(V[i] - u0) - d01) < tol]
+        u1_candidates = [
+            i
+            for i in range(n)
+            if abs(np.linalg.norm(V[i]) - d1) < tol
+            and abs(np.linalg.norm(V[i] - u0) - d01) < tol
+        ]
         for u1_i in u1_candidates:
             u1 = V[u1_i]
             if v2_idx != -1:
                 d2 = np.linalg.norm(v2)
                 d02 = np.linalg.norm(v0 - v2)
                 d12 = np.linalg.norm(v1 - v2)
-                u2_candidates = [i for i in range(n) if abs(np.linalg.norm(V[i]) - d2) < tol and abs(np.linalg.norm(V[i] - u0) - d02) < tol and abs(np.linalg.norm(V[i] - u1) - d12) < tol]
+                u2_candidates = [
+                    i
+                    for i in range(n)
+                    if abs(np.linalg.norm(V[i]) - d2) < tol
+                    and abs(np.linalg.norm(V[i] - u0) - d02) < tol
+                    and abs(np.linalg.norm(V[i] - u1) - d12) < tol
+                ]
                 for u2_i in u2_candidates:
                     u2 = V[u2_i]
                     R = np.column_stack((u0, u1, u2)) @ M_inv
-                    if (np.linalg.norm(R.T @ R - np.eye(3)) < tol and is_valid_symmetry(R, V, tol) and not any(np.linalg.norm(R - S) < tol for S in seen_matrices)):
+                    if (
+                        np.linalg.norm(R.T @ R - np.eye(3)) < tol
+                        and is_valid_symmetry(R, V, tol)
+                        and not any(np.linalg.norm(R - S) < tol for S in seen_matrices)
+                    ):
                         seen_matrices.append(R)
                         symmetries.append(R)
             else:
@@ -563,7 +622,11 @@ def get_symmetry_group(vertices, tol=SYMMETRY_TOLERANCE):
                     u2 = sign * np.cross(u0, u1)
                     u2 = u2 / np.linalg.norm(u2)
                     R = np.column_stack((u0, u1, u2)) @ M_inv
-                    if (np.linalg.norm(R.T @ R - np.eye(3)) < tol and is_valid_symmetry(R, V, tol) and not any(np.linalg.norm(R - S) < tol for S in seen_matrices)):
+                    if (
+                        np.linalg.norm(R.T @ R - np.eye(3)) < tol
+                        and is_valid_symmetry(R, V, tol)
+                        and not any(np.linalg.norm(R - S) < tol for S in seen_matrices)
+                    ):
                         seen_matrices.append(R)
                         symmetries.append(R)
 
@@ -662,7 +725,10 @@ def find_all_subgroups(group_matrices, tol=SYMMETRY_TOLERANCE):
     element_orders = []
     for m in group_matrices:
         for k in range(1, 11):
-            if np.linalg.norm(np.linalg.matrix_power(m, k) - np.eye(3)) < ORDER_TOLERANCE:
+            if (
+                np.linalg.norm(np.linalg.matrix_power(m, k) - np.eye(3))
+                < ORDER_TOLERANCE
+            ):
                 element_orders.append(k)
                 break
         else:
@@ -744,7 +810,7 @@ def classify_subgroup(sg_indices, full_matrices):
 
     rot_indices = [i for i in sg_indices if np.linalg.det(full_matrices[i]) > 0.9]
     M = len(rot_indices)
-    chiral = (N == M)
+    chiral = N == M
 
     if M == 1:
         if N == 1:
@@ -758,7 +824,10 @@ def classify_subgroup(sg_indices, full_matrices):
     for idx in rot_indices:
         m = full_matrices[idx]
         for k in range(1, 11):
-            if np.linalg.norm(np.linalg.matrix_power(m, k) - np.eye(3)) < ORDER_TOLERANCE:
+            if (
+                np.linalg.norm(np.linalg.matrix_power(m, k) - np.eye(3))
+                < ORDER_TOLERANCE
+            ):
                 max_order = max(max_order, k)
                 break
 
@@ -776,10 +845,14 @@ def classify_subgroup(sg_indices, full_matrices):
         max_order = M
 
     if chiral:
-        if rot_type == "Icosahedral": return "Icosahedral chiral (I)"
-        if rot_type == "Octahedral": return "Octahedral chiral (O)"
-        if rot_type == "Tetrahedral": return "Tetrahedral chiral (T)"
-        if rot_type == "Dihedral": return f"{max_order}-fold Dihedral chiral (D{max_order})"
+        if rot_type == "Icosahedral":
+            return "Icosahedral chiral (I)"
+        if rot_type == "Octahedral":
+            return "Octahedral chiral (O)"
+        if rot_type == "Tetrahedral":
+            return "Tetrahedral chiral (T)"
+        if rot_type == "Dihedral":
+            return f"{max_order}-fold Dihedral chiral (D{max_order})"
         return f"{max_order}-fold Cyclic chiral (C{max_order})"
     else:
         if rot_type == "Icosahedral":
@@ -790,11 +863,23 @@ def classify_subgroup(sg_indices, full_matrices):
             return "Pyritohedral (Th)" if has_inversion else "Tetrahedral full (Td)"
         elif rot_type == "Dihedral":
             if has_inversion:
-                return f"{max_order}-fold Dihedral prismatic (D{max_order}h)" if max_order % 2 == 0 else f"{max_order}-fold Dihedral antiprismatic (D{max_order}d)"
+                return (
+                    f"{max_order}-fold Dihedral prismatic (D{max_order}h)"
+                    if max_order % 2 == 0
+                    else f"{max_order}-fold Dihedral antiprismatic (D{max_order}d)"
+                )
             else:
-                return f"{max_order}-fold Dihedral antiprismatic (D{max_order}d)" if max_order % 2 == 0 else f"{max_order}-fold Dihedral prismatic (D{max_order}h)"
+                return (
+                    f"{max_order}-fold Dihedral antiprismatic (D{max_order}d)"
+                    if max_order % 2 == 0
+                    else f"{max_order}-fold Dihedral prismatic (D{max_order}h)"
+                )
         else:
-            return f"{max_order}-fold Cyclic prismatic (C{max_order}h)" if has_inversion else f"{max_order}-fold Pyramidal (C{max_order}v)"
+            return (
+                f"{max_order}-fold Cyclic prismatic (C{max_order}h)"
+                if has_inversion
+                else f"{max_order}-fold Pyramidal (C{max_order}v)"
+            )
 
 
 def filter_conjugacy_classes(subgroups, full_matrices, table):
@@ -855,11 +940,20 @@ def group_into_orbits(candidate_faces, vertices, symmetries, tol=1e-5):
 
 @njit(cache=True)
 def _backtrack_numba(
-    num_orbits, num_edges, num_vertices, must_use_all_vertices,
-    orbit_edges_flat, orbit_edges_counts, orbit_edges_offsets,
-    orbit_vertices_flat, orbit_vertices_counts, orbit_vertices_offsets,
-    edges_expiring_flat, edges_expiring_offsets,
-    vertices_expiring_flat, vertices_expiring_offsets
+    num_orbits,
+    num_edges,
+    num_vertices,
+    must_use_all_vertices,
+    orbit_edges_flat,
+    orbit_edges_counts,
+    orbit_edges_offsets,
+    orbit_vertices_flat,
+    orbit_vertices_counts,
+    orbit_vertices_offsets,
+    edges_expiring_flat,
+    edges_expiring_offsets,
+    vertices_expiring_flat,
+    vertices_expiring_offsets,
 ):
     max_sols = 20000
     sol_orbits = np.empty((max_sols, num_orbits), dtype=np.int32)
@@ -978,7 +1072,15 @@ def _backtrack_numba(
     return sol_orbits[:sol_count], sol_lengths[:sol_count]
 
 
-def solve_facetings(orbits, candidate_faces, num_verts, must_use_all_vertices=True, full_symmetries=None, vertices=None, progress_callback=None):
+def solve_facetings(
+    orbits,
+    candidate_faces,
+    num_verts,
+    must_use_all_vertices=True,
+    full_symmetries=None,
+    vertices=None,
+    progress_callback=None,
+):
     if not orbits:
         return []
 
@@ -1065,7 +1167,8 @@ def solve_facetings(orbits, candidate_faces, num_verts, must_use_all_vertices=Tr
         np.array(edges_expiring_flat, dtype=np.int32),
         np.array(edges_expiring_offsets, dtype=np.int32),
         np.array(vertices_expiring_flat, dtype=np.int32),
-        np.array(vertices_expiring_offsets, dtype=np.int32))
+        np.array(vertices_expiring_offsets, dtype=np.int32),
+    )
 
     solutions = []
     for i in range(len(sol_lengths)):
@@ -1113,7 +1216,9 @@ def filter_duplicate_solutions(solutions, vertices, full_symmetries):
         unique_solutions.append(sol)
 
         for perm in perms:
-            mapped_faces = frozenset(normalize_face(tuple(perm[v] for v in face)) for face in sol_set)
+            mapped_faces = frozenset(
+                normalize_face(tuple(perm[v] for v in face)) for face in sol_set
+            )
             seen_equivalents.add(mapped_faces)
 
     return unique_solutions
@@ -1221,7 +1326,12 @@ def blend_coplanar_faces_all_windings(vertices, faces, tol=1e-5):
                         v = next(iter(shared))
                         idx_i = loops_copy[i].index(v)
                         idx_j = loops_copy[j].index(v)
-                        new_loop = loops_copy[i][:idx_i] + loops_copy[j][idx_j:] + loops_copy[j][:idx_j] + loops_copy[i][idx_i:]
+                        new_loop = (
+                            loops_copy[i][:idx_i]
+                            + loops_copy[j][idx_j:]
+                            + loops_copy[j][:idx_j]
+                            + loops_copy[i][idx_i:]
+                        )
                         loops_copy.pop(j)
                         loops_copy.pop(i)
                         loops_copy.append(new_loop)
@@ -1280,7 +1390,9 @@ def blend_coplanar_faces_all_windings(vertices, faces, tol=1e-5):
 
         for comp_faces_indices in components:
             if len(comp_faces_indices) == 1:
-                all_components_alternatives.append([[consistent_faces[comp_faces_indices[0]]]])
+                all_components_alternatives.append(
+                    [[consistent_faces[comp_faces_indices[0]]]]
+                )
                 continue
 
             edge_counts = {}
@@ -1293,7 +1405,7 @@ def blend_coplanar_faces_all_windings(vertices, faces, tol=1e-5):
                     edge_to_face[(u, v)] = f_idx
 
             boundary_edges = set()
-            for (u, v) in edge_counts:
+            for u, v in edge_counts:
                 if (v, u) not in edge_counts:
                     boundary_edges.add((u, v))
 
@@ -1301,7 +1413,7 @@ def blend_coplanar_faces_all_windings(vertices, faces, tol=1e-5):
                 continue
 
             next_edge = {}
-            for (u, v) in boundary_edges:
+            for u, v in boundary_edges:
                 f_idx = edge_to_face[(u, v)]
                 curr_face = consistent_faces[f_idx]
                 idx = curr_face.index(v)
@@ -1376,7 +1488,9 @@ def blend_coplanar_faces_all_windings(vertices, faces, tol=1e-5):
             if simplified_alternatives:
                 all_components_alternatives.append(simplified_alternatives)
             else:
-                all_components_alternatives.append([[faces[idx] for idx in comp_faces_indices]])
+                all_components_alternatives.append(
+                    [[faces[idx] for idx in comp_faces_indices]]
+                )
 
     total_comb = 1
     for alt in all_components_alternatives:
