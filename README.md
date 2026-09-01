@@ -3,7 +3,7 @@ These scripts were written by Jim McNeill using AI tools. I decided it would be
 a good idea to add them to a git repo. These files come as is and without any
 guaratees and I cannot promise that any problems will be solved any time soon.
 
-# Using Repository from Github
+## Using Repository from Github
 
 After cloning the the repository the offviewer can be run from the directory through
 
@@ -11,13 +11,12 @@ After cloning the the repository the offviewer can be run from the directory thr
 
 This requires that you have uv installed, see [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
-
-# Using a Released Version
+## Using a Released Version
 
 A released version can be installed by
-`pip install offviewer`
+`pip install hedron_scripts`
 
-It is wise to use a virtual Python environment, e.g. on Linux:
+It is wise to use a virtual Python environment, e.g:
 ```
 python -m venv path_to_venv
 . path_to_venv/bin/activate
@@ -30,7 +29,11 @@ There is also the scripts
 - `offchecker`
 - `facetings`
 
-# The Off File Viewer
+## The Off File Viewer
+The off file viewer is called `offviewer`. It works as a file browser and shows
+the 3D interactive images for files living in a folder. It is also possible to
+get some properties for the polyhedra modelled by the OFF file.
+
 When you open a grid window the sort mode will be greyed out while it
 calculates the metrics for the off files.  Once it has done this and you select
 a sort order, duplicate values of the sort parameter are highlighted in pink.
@@ -49,3 +52,7 @@ Float parameters have a small tolerance built in.
 - The grid view also has some functions if you right click: delete, rename, view source, open in Stella.
 - The offcheck.py file is also a standalone checker.  If you change the metrics that this is calculating they should flow through into offviewer automatically.
 - The path and 'search' at the top of the grid screen don't work (yet) and will probably be removed
+
+## License
+
+This package is published under the GNU Public License version 2, see the LICENSE.txt file.
