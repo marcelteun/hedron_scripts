@@ -7,7 +7,7 @@ authors = [
     { name = "Jim McNeill" },
     { name = "Marcel Tünnissen", email = "marcelteun@gmail.com" },
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "glfw>=2.10.2",
     "imgui-bundle>=1.92.900",
