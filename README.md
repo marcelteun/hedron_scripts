@@ -34,12 +34,26 @@ python -m venv path_to_venv
 Opens an interactive 3D browser for the OFF files in a folder. Pass a folder to
 open its grid view, or an OFF file to open that file in the enlarged view. The
 viewer calculates model metrics in the background; those metrics can be used
-for sorting and for identifying duplicate values.
+for sorting and for identifying duplicate values. Until this calculation
+finishes, sorting is unavailable. Equal sort values are highlighted in pink;
+**Delete duplicates** keeps the oldest file for each value, using a tolerance
+for floating-point metrics.
 
 ```sh
 uv run offviewer models/
 offviewer path/to/model.off
 ```
+
+#### Using the viewer
+
+- In the grid view, use `+`/`=` and `-` to change cell size, and left-drag or
+  use the arrow keys to rotate a model. Avoid auto-rotation until metric
+  analysis has finished, as it slows the calculation.
+- Double-click a model to open the enlarged view. Use the left and right arrow
+  keys to navigate between files; `f`, `v`, `e`, and `c` cycle face, vertex,
+  edge, and compound-part displays respectively; `x` returns to the grid.
+- Right-click a model for file actions, including rename, delete, viewing its
+  source, and any configured external tools.
 
 ### `offchecker [path-to-file.off]`
 
@@ -76,30 +90,6 @@ alongside the source model.
 uv run leonardo path/to/model.off
 leonardo path/to/model.wrl
 ```
-
-## The Off File Viewer
-The off file viewer is called `offviewer`. It works as a file browser and shows
-the 3D interactive images for files living in a folder. It is also possible to
-get some properties for the polyhedra modelled by the OFF file.
-
-When you open a grid window the sort mode will be greyed out while it
-calculates the metrics for the off files.  Once it has done this and you select
-a sort order, duplicate values of the sort parameter are highlighted in pink.
-The delete duplicates button will keep the oldest file with any one value.
-Float parameters have a small tolerance built in.
-
-- Auto rotate is fun but wait until the sort button blacks up or you'll slow it down.
-- + (or =) and - will zoom the cells on the grid screen-
-- Any polyhedron can be rotated by left dragging with the mouse ot=r by using the arrow keys
-- Double click on an image to get to the enlarged screen.
-    - The left and right arrows are previous/next file.
-    - 'f' on the enlarged screen will cycle through the face types one by one.
-    - 'v' cycles through the vertices
-    - 'e' does some edge options (also on the grid view)
-    - 'x' to return to the original view
-- The grid view also has some functions if you right click: delete, rename, view source, open in Stella.
-- The offcheck.py file is also a standalone checker.  If you change the metrics that this is calculating they should flow through into offviewer automatically.
-- The path and 'search' at the top of the grid screen don't work (yet) and will probably be removed
 
 ## License
 
