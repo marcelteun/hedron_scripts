@@ -93,4 +93,5 @@ leonardo path/to/model.wrl
 
 ## License
 
-This package is published under the GNU Public License version 2, see the LICENSE.txt file.
+This package is published under the GNU Public License version 2; see
+[LICENSE.txt](LICENSE.txt).
