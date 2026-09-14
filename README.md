@@ -79,6 +79,23 @@ uv run facetings
 facetings
 ```
 
+### `generate-nobles`
+
+Searches for non-degenerate noble polyhedra with the configured symmetry group
+and face gonality. The search uses all available CPU cores and may take a long
+time for complex configurations. It writes discovered OFF files to `noble/`
+relative to the directory where the command is run; colour variants are written
+to `noble/multicolour/`, and duals are produced when enabled.
+
+Configure the search in `src/hedron_scripts/lib/nobles.py` before running it.
+The main settings include `SYMMETRY_GROUP`, `TARGET_NGON`, seed subdivision,
+colouring, and dual generation.
+
+```sh
+uv run generate-nobles
+generate-nobles
+```
+
 ### `leonardo [path-to-file.off-or-vrml]`
 
 Opens the Leonardo-style frame-mesh viewer. Pass an OFF file or a supported
