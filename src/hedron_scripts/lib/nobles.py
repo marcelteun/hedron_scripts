@@ -20,20 +20,28 @@ SYMMETRY_GROUP = "I"  # "I" (chiral I), "Ih" (full Ih), "I3" (chiral I3), "I3h" 
 TARGET_NGON = 5  # 3 to 6 works (6 and Ih with care) Use duals to generate anything with a gonality > 6
 PRE_FILTER_TOPOLOGY = True  # Set to True for non-collapsed searches (like N=5), False to allow collapsed states (like 24-vertex Oh 4)
 SUBDIVISION_FACTOR = 1  # Set > 0 (1 is usually enough) to find cases on symmetry boundaries (like 8 quads at each vertex Oh symmetry)
-ADD_MIDPOINTS = False  # Add extra starting seeds along the edges of the Schwarz triangle
+ADD_MIDPOINTS = (
+    False  # Add extra starting seeds along the edges of the Schwarz triangle
+)
 DUPLICATE_CHIRAL_SEEDS = True  # Set to True to duplicate seeds with their reflected partner for chiral groups
 DEBUG = False  # Export OFF files containing the convex hulls of the exact uniform generator seeds
 HIGHLIGHT_ONE_FACE = True  # When True, color the first face in yellow (255, 255, 0)
 N_COLOURS = "Valency"  # "Off", "Valency" (colours=valency), or "Minimal" (mathematical minimum even if > valency)
-ALT_COLOURINGS = True  # Set to True to search for and export all unique alternative colorings
+ALT_COLOURINGS = (
+    True  # Set to True to search for and export all unique alternative colorings
+)
 USE_CENTROID = True
 USE_RHOMBIREGULAR = False  # Rhombicosidodecahedron (I/Ih) / Rhombicuboctahedron (O/Oh) / Cuboctahedron (T/Td/Th)
 USE_TRUNCATED_PRIMARY = False  # Truncated Icosahedron (I/Ih) / Truncated Cube (O/Oh) / Truncated Tetrahedron (T/Td/Th)
 USE_TRUNCATED_SECONDARY = False  # Truncated Dodecahedron (I/Ih) / Truncated Octahedron (O/Oh) / Truncated Tetrahedron Dual (T/Td/Th)
-USE_SNUB = False  # Snub Dodecahedron (I/Ih) / Snub Cube (O/Oh) / Snub Tetrahedron (T/Td/Th)
+USE_SNUB = (
+    False  # Snub Dodecahedron (I/Ih) / Snub Cube (O/Oh) / Snub Tetrahedron (T/Td/Th)
+)
 PRODUCE_DUALS = "Some"  # "Yes", "No", "Some". "Some" only produces if dual gonality exceeds base gonality.
 # Collapsed search configurations
-COLLAPSED_SEARCH = False  # Set to True to search directly on collapsed symmetry orbits (it's faster)
+COLLAPSED_SEARCH = (
+    False  # Set to True to search directly on collapsed symmetry orbits (it's faster)
+)
 COLLAPSED_ORBIT = "5-fold"  # Vertices  I "5-fold" Ike, "3-fold" Dod, "2-fold" ID
 #                                           O "4-fold" Oct, "3-fold" Cube, "2-fold" CO
 # If collapsed edge states are being searched for then force vertex seeds.
@@ -55,10 +63,13 @@ def get_rotation_matrix(axis, theta):
     b, c, d = -axis * np.sin(theta / 2.0)
     aa, bb, cc, dd = a * a, b * b, c * c, d * d
     bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
-    return np.array([
-        [aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
-        [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
-        [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
+    return np.array(
+        [
+            [aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
+            [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
+            [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc],
+        ]
+    )
 
 
 def generate_icosahedral_group_ih():
@@ -292,7 +303,9 @@ def is_single_connected_component_numba(template, mult_table, group_size):
 
 
 @njit(cache=True)
-def is_valid_topology_collapsed_numba(template, mult_table, vert_map, group_size, num_vertices):
+def is_valid_topology_collapsed_numba(
+    template, mult_table, vert_map, group_size, num_vertices
+):
     """Numba-accelerated topological checker designed specifically for collapsed orbits.
     Evaluates topological validity directly on the merged physical vertex coordinates.
     """
@@ -319,7 +332,9 @@ def is_valid_topology_collapsed_numba(template, mult_table, vert_map, group_size
 
 
 @njit(cache=True)
-def is_single_connected_component_collapsed_numba(template, mult_table, vert_map, group_size, num_vertices):
+def is_single_connected_component_collapsed_numba(
+    template, mult_table, vert_map, group_size, num_vertices
+):
     """Filters out compounds on collapsed orbits by checking connectivity on the merged physical graph."""
     n = len(template)
     adj = np.zeros((num_vertices, num_vertices), dtype=np.bool_)
@@ -352,7 +367,9 @@ def is_single_connected_component_collapsed_numba(template, mult_table, vert_map
 
 
 @njit(cache=True)
-def filter_canonical_combinations_numba(combinations_arr, n, mult_table, aut_sigma, group_size):
+def filter_canonical_combinations_numba(
+    combinations_arr, n, mult_table, aut_sigma, group_size
+):
     """Numba-accelerated combination orbit filtering. Removes combinations that are
     symmetrically equivalent under the full symmetry group, keeping only the
     lexicographically smallest representative.
@@ -415,6 +432,7 @@ def filter_canonical_combinations_numba(combinations_arr, n, mult_table, aut_sig
         keep_mask[i] = is_canonical
 
     return keep_mask
+
 
 # ==============================================================================
 # 4. CONTINUOUS COORDINATE OPTIMIZATION (Numba Accelerated Residuals)
@@ -485,6 +503,7 @@ def coplanarity_residuals_numba(params, template, group_gen_3d):
             pair_idx += 1
 
     return residuals
+
 
 # ==============================================================================
 # 5. GEOMETRIC ANALYSIS & FILTERING (Manifold & Symmetry Merge Engine)
@@ -683,7 +702,11 @@ def find_n_colouring(faces, num_vertices, mode="Valency", find_all=False):
 
         if k * g == V:
             # --- Knuth's Algorithm X (Exact Cover) ---
-            candidates = [f for f in available_faces if f != forced_face and face_verts[f].isdisjoint(initial_covered)]
+            candidates = [
+                f
+                for f in available_faces
+                if f != forced_face and face_verts[f].isdisjoint(initial_covered)
+            ]
 
             def alg_x(current_candidates, current_cover, covered_verts):
                 if len(current_cover) == k:
@@ -700,17 +723,27 @@ def find_n_colouring(faces, num_vertices, mode="Valency", find_all=False):
                     return
 
                 # We must cover 'uncovered' next. Branch only on faces containing it.
-                branch_candidates = [f for f in current_candidates if uncovered in face_verts[f]]
+                branch_candidates = [
+                    f for f in current_candidates if uncovered in face_verts[f]
+                ]
 
                 for f in branch_candidates:
                     new_covered = covered_verts | face_verts[f]
-                    next_candidates = [c for c in current_candidates if c != f and face_verts[c].isdisjoint(face_verts[f])]
+                    next_candidates = [
+                        c
+                        for c in current_candidates
+                        if c != f and face_verts[c].isdisjoint(face_verts[f])
+                    ]
                     alg_x(next_candidates, current_cover + [f], new_covered)
 
             alg_x(candidates, [forced_face], initial_covered)
         else:
             # --- Strictly Increasing Index Backtracking (for imperfect covers) ---
-            candidates = [f for f in available_faces if f > forced_face and face_verts[f].isdisjoint(initial_covered)]
+            candidates = [
+                f
+                for f in available_faces
+                if f > forced_face and face_verts[f].isdisjoint(initial_covered)
+            ]
 
             def search(candidates, current_cover, covered_verts):
                 if len(current_cover) == k:
@@ -719,7 +752,11 @@ def find_n_colouring(faces, num_vertices, mode="Valency", find_all=False):
 
                 for idx, f in enumerate(candidates):
                     new_covered = covered_verts | face_verts[f]
-                    next_candidates = [c for c in candidates[idx + 1:] if face_verts[c].isdisjoint(new_covered)]
+                    next_candidates = [
+                        c
+                        for c in candidates[idx + 1 :]
+                        if face_verts[c].isdisjoint(new_covered)
+                    ]
                     search(next_candidates, current_cover + [f], new_covered)
 
             search(candidates, [forced_face], initial_covered)
@@ -735,7 +772,11 @@ def find_n_colouring(faces, num_vertices, mode="Valency", find_all=False):
         covers = get_covers(available_faces, forced_face)
 
         for cover in covers:
-            color_idx = len(np.unique(current_assignment[current_assignment >= 0])) if np.any(current_assignment >= 0) else 0
+            color_idx = (
+                len(np.unique(current_assignment[current_assignment >= 0]))
+                if np.any(current_assignment >= 0)
+                else 0
+            )
             for f in cover:
                 current_assignment[f] = color_idx
 
@@ -755,6 +796,7 @@ def find_n_colouring(faces, num_vertices, mode="Valency", find_all=False):
         return all_partitions
     else:
         return all_partitions[0] if all_partitions else None
+
 
 # ==============================================================================
 # 6. OFF FILE EXPORT SYSTEM (16 DECIMAL PLACES WITH COLOR)
@@ -784,7 +826,9 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
         for j in range(n_face):
             edge_set.add(tuple(sorted((face[j], face[(j + 1) % n_face]))))
 
-    edge_lengths = [np.linalg.norm(unique_verts[u] - unique_verts[v]) for u, v in edge_set]
+    edge_lengths = [
+        np.linalg.norm(unique_verts[u] - unique_verts[v]) for u, v in edge_set
+    ]
     if edge_lengths:
         max_edge = max(edge_lengths)
         min_edge = min(edge_lengths)
@@ -804,7 +848,8 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
         "0 255 128",  # 8: Spring Green
         "128 255 0",  # 9: Lime
         "0 128 255",  # 10: Azure
-        "255 0 128"]  # 11: Rose
+        "255 0 128",
+    ]  # 11: Rose
 
     # 1. WRITE NORMAL SINGLE-COLOR FILE (to noble/)
     normal_filepath = os.path.join("noble", clean_filename + ".off")
@@ -814,7 +859,9 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
         f.write(f"# Template: {list(template)}\n")
         if seed_label is not None:
             f.write(f"# Discovered via starting seed: {seed_label}\n")
-        f.write(f"# Final generator coordinate (Cartesian): [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}]\n")
+        f.write(
+            f"# Final generator coordinate (Cartesian): [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}]\n"
+        )
         f.write(f"# Edge Max/Min Ratio: {edge_ratio:.16f}\n")
         f.write(f"{len(unique_verts)} {len(merged_faces)} 0\n")
 
@@ -822,7 +869,7 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
 
         for idx, face in enumerate(merged_faces):
             face_str = " ".join(map(str, face))
-            is_first_face = (idx == 0)
+            is_first_face = idx == 0
             show_highlight = is_first_face and HIGHLIGHT_ONE_FACE
             color_str = "255 255 0" if show_highlight else "255 0 0"
             f.write(f"{len(face)} {face_str} {color_str}\n")
@@ -832,9 +879,13 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
     # 2. WRITE MULTICOLOR FILE (to noble/multicolour/)
     if N_COLOURS != "Off":
         if ALT_COLOURINGS:
-            all_colors = find_n_colouring(merged_faces, len(unique_verts), mode=N_COLOURS, find_all=True)
+            all_colors = find_n_colouring(
+                merged_faces, len(unique_verts), mode=N_COLOURS, find_all=True
+            )
         else:
-            colors = find_n_colouring(merged_faces, len(unique_verts), mode=N_COLOURS, find_all=False)
+            colors = find_n_colouring(
+                merged_faces, len(unique_verts), mode=N_COLOURS, find_all=False
+            )
             all_colors = [colors] if colors is not None else []
 
         for c_idx, colors in enumerate(all_colors):
@@ -842,21 +893,29 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
                 os.makedirs(os.path.join("noble", "multicolour"), exist_ok=True)
                 v_colors = len(np.unique(colors))
                 if ALT_COLOURINGS and len(all_colors) > 1:
-                    multicolour_filename = f"{clean_filename}_{v_colors}colour_alt{c_idx}.off"
+                    multicolour_filename = (
+                        f"{clean_filename}_{v_colors}colour_alt{c_idx}.off"
+                    )
                 else:
                     multicolour_filename = f"{clean_filename}_{v_colors}colour.off"
-                multicolour_filepath = os.path.join("noble", "multicolour", multicolour_filename)
+                multicolour_filepath = os.path.join(
+                    "noble", "multicolour", multicolour_filename
+                )
                 with open(multicolour_filepath, "w") as f:
                     f.write("OFF\n")
                     f.write(f"# {multicolour_filename}\n")
                     f.write(f"# Template: {list(template)}\n")
                     if seed_label is not None:
                         f.write(f"# Discovered via starting seed: {seed_label}\n")
-                    f.write(f"# Final generator coordinate (Cartesian): [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}]\n")
+                    f.write(
+                        f"# Final generator coordinate (Cartesian): [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}]\n"
+                    )
                     f.write(f"# Edge Max/Min Ratio: {edge_ratio:.16f}\n")
                     f.write(f"{len(unique_verts)} {len(merged_faces)} 0\n")
 
-                    f.writelines(f"{v[0]:.16f} {v[1]:.16f} {v[2]:.16f}\n" for v in unique_verts)
+                    f.writelines(
+                        f"{v[0]:.16f} {v[1]:.16f} {v[2]:.16f}\n" for v in unique_verts
+                    )
 
                     for idx, face in enumerate(merged_faces):
                         face_str = " ".join(map(str, face))
@@ -962,7 +1021,9 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
         for i in range(n_f):
             dual_edge_set.add(tuple(sorted((face[i], face[(i + 1) % n_f]))))
 
-    dual_lengths = [np.linalg.norm(dual_vertices[u] - dual_vertices[v]) for u, v in dual_edge_set]
+    dual_lengths = [
+        np.linalg.norm(dual_vertices[u] - dual_vertices[v]) for u, v in dual_edge_set
+    ]
     if dual_lengths:
         max_dual_edge = max(dual_lengths)
         min_dual_edge = min(dual_lengths)
@@ -1015,7 +1076,9 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
         f.write("OFF\n")
         f.write(f"# {dual_base}.off (Single Colour)\n")
         f.write(f"# Dual of template: {list(template)}\n")
-        f.write(f"# Final generator coordinate (Cartesian): [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}]\n")
+        f.write(
+            f"# Final generator coordinate (Cartesian): [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}]\n"
+        )
         f.write(f"# Edge Max/Min Ratio: {dual_edge_ratio:.16f}\n")
         f.write(f"{len(dual_vertices)} {len(dual_faces)} 0\n")
 
@@ -1024,7 +1087,7 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
 
         for idx, face in enumerate(dual_faces):
             face_str = " ".join(map(str, face))
-            is_first_face = (idx == 0)
+            is_first_face = idx == 0
             show_highlight = is_first_face and HIGHLIGHT_ONE_FACE
             color_str = "255 255 0" if show_highlight else "255 0 0"
             f.write(f"{len(face)} {face_str} {color_str}\n")
@@ -1034,9 +1097,13 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
     # 4. WRITE MULTICOLOR DUAL FILE (to noble/multicolour/)
     if N_COLOURS != "Off":
         if ALT_COLOURINGS:
-            all_dual_colors = find_n_colouring(dual_faces, len(dual_vertices), mode=N_COLOURS, find_all=True)
+            all_dual_colors = find_n_colouring(
+                dual_faces, len(dual_vertices), mode=N_COLOURS, find_all=True
+            )
         else:
-            dual_colors = find_n_colouring(dual_faces, len(dual_vertices), mode=N_COLOURS, find_all=False)
+            dual_colors = find_n_colouring(
+                dual_faces, len(dual_vertices), mode=N_COLOURS, find_all=False
+            )
             all_dual_colors = [dual_colors] if dual_colors is not None else []
 
         for c_idx, dual_colors in enumerate(all_dual_colors):
@@ -1044,15 +1111,21 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
                 os.makedirs(os.path.join("noble", "multicolour"), exist_ok=True)
                 v_dual_colors = len(np.unique(dual_colors))
                 if ALT_COLOURINGS and len(all_dual_colors) > 1:
-                    dual_multicolour_filename = f"{dual_base}_{v_dual_colors}colour_alt{c_idx}.off"
+                    dual_multicolour_filename = (
+                        f"{dual_base}_{v_dual_colors}colour_alt{c_idx}.off"
+                    )
                 else:
                     dual_multicolour_filename = f"{dual_base}_{v_dual_colors}colour.off"
-                dual_multicolour_filepath = os.path.join("noble", "multicolour", dual_multicolour_filename)
+                dual_multicolour_filepath = os.path.join(
+                    "noble", "multicolour", dual_multicolour_filename
+                )
                 with open(dual_multicolour_filepath, "w") as f:
                     f.write("OFF\n")
                     f.write(f"# {dual_multicolour_filename}\n")
                     f.write(f"# Dual of template: {list(template)}\n")
-                    f.write(f"# Final generator coordinate (Cartesian): [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}]\n")
+                    f.write(
+                        f"# Final generator coordinate (Cartesian): [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}]\n"
+                    )
                     f.write(f"# Edge Max/Min Ratio: {dual_edge_ratio:.16f}\n")
                     f.write(f"{len(dual_vertices)} {len(dual_faces)} 0\n")
 
@@ -1128,7 +1201,9 @@ def get_untriangulated_faces(vertices, hull):
         v0_idx = simplices[group[0]][0]
         v1_idx = simplices[group[0]][1]
         v2_idx = simplices[group[0]][2]
-        norm = np.cross(vertices[v1_idx] - vertices[v0_idx], vertices[v2_idx] - vertices[v0_idx])
+        norm = np.cross(
+            vertices[v1_idx] - vertices[v0_idx], vertices[v2_idx] - vertices[v0_idx]
+        )
         norm = norm / np.linalg.norm(norm)
 
         U = vertices[v0_idx] - centroid
@@ -1181,12 +1256,13 @@ def export_convex_hull_to_off(filename, P, comment=""):
 
         for idx, face in enumerate(faces):
             face_str = " ".join(map(str, face))
-            is_first_face = (idx == 0)
+            is_first_face = idx == 0
             show_highlight = is_first_face and HIGHLIGHT_ONE_FACE
             color_str = "255 255 0" if show_highlight else "255 0 0"
             f.write(f"{len(face)} {face_str} {color_str}\n")
 
     print(f"--> [DEBUG] Saved convex hull to: {filepath}")
+
 
 # ==============================================================================
 # 7. PARALLELIZATION & GRID SEEDING UTILITIES
@@ -1272,7 +1348,8 @@ def find_exact_snub_seed(group_chiral):
         np.array([-2.0 * alpha, 2.0, 2.0 * beta]),
         np.array([2.0 * beta, 2.0 * alpha, 2.0]),
         np.array([2.0 * beta, 2.0 * alpha, 2.0]),
-        np.array([2.0, 2.0 * beta, 2.0 * alpha])]
+        np.array([2.0, 2.0 * beta, 2.0 * alpha]),
+    ]
 
     for p_start in candidates:
         P = p_start / np.linalg.norm(p_start)
@@ -1298,7 +1375,8 @@ def find_exact_snub_cube_seed(group_chiral):
         np.array([1.0, xi, 1.0 / xi]),
         np.array([1.0, xi, -1.0 / xi]),
         np.array([1.0, -xi, 1.0 / xi]),
-        np.array([-1.0, xi, 1.0 / xi])]
+        np.array([-1.0, xi, 1.0 / xi]),
+    ]
     for p_start in candidates:
         P = p_start / np.linalg.norm(p_start)
         vertices = np.array([np.dot(G, P) for G in group_chiral])
@@ -1376,8 +1454,14 @@ def generate_landmark_seeds(n_subdiv):
                 w3_raw = k / n_subdiv
 
                 # Check if the seed lies on a high-symmetry corner or boundary edge
-                is_on_boundary = (w1_raw == 0.0 or w2_raw == 0.0 or w3_raw == 0.0
-                                  or w1_raw == 1.0 or w2_raw == 1.0 or w3_raw == 1.0)
+                is_on_boundary = (
+                    w1_raw == 0.0
+                    or w2_raw == 0.0
+                    or w3_raw == 0.0
+                    or w1_raw == 1.0
+                    or w2_raw == 1.0
+                    or w3_raw == 1.0
+                )
 
                 # 1. Add the exact unperturbed grid point
                 P_raw = w1_raw * V1 + w2_raw * w2_raw * V2 + w3_raw * V3
@@ -1468,38 +1552,104 @@ def generate_landmark_seeds(n_subdiv):
 
     if SYMMETRY_GROUP in ["I", "Ih"]:
         if USE_RHOMBIREGULAR:
-            exact_points.append((get_exact_rhombicosidodecahedron(V1, V2, V3), "Exact Rhombicosidodecahedron"))
+            exact_points.append(
+                (
+                    get_exact_rhombicosidodecahedron(V1, V2, V3),
+                    "Exact Rhombicosidodecahedron",
+                )
+            )
         if USE_TRUNCATED_PRIMARY:
-            exact_points.append((get_exact_truncated_icosahedron(V1, V2, V3), "Exact Truncated Icosahedron"))
+            exact_points.append(
+                (
+                    get_exact_truncated_icosahedron(V1, V2, V3),
+                    "Exact Truncated Icosahedron",
+                )
+            )
         if USE_TRUNCATED_SECONDARY:
-            exact_points.append((get_exact_truncated_dodecahedron(V1, V2, V3), "Exact Truncated Dodecahedron"))
+            exact_points.append(
+                (
+                    get_exact_truncated_dodecahedron(V1, V2, V3),
+                    "Exact Truncated Dodecahedron",
+                )
+            )
         if USE_SNUB:
-            exact_points.append((find_exact_snub_seed(GROUP_CHIRAL), "Exact Snub Dodecahedron"))
+            exact_points.append(
+                (find_exact_snub_seed(GROUP_CHIRAL), "Exact Snub Dodecahedron")
+            )
     elif SYMMETRY_GROUP in ["I3", "I3h"]:
         if USE_RHOMBIREGULAR:
-            exact_points.append((get_exact_rhombicosidodecahedron(V1, V2, V3), "Exact Rhombicosidodecahedron (I3)"))
+            exact_points.append(
+                (
+                    get_exact_rhombicosidodecahedron(V1, V2, V3),
+                    "Exact Rhombicosidodecahedron (I3)",
+                )
+            )
         if USE_TRUNCATED_PRIMARY:
-            exact_points.append((get_exact_truncated_icosahedron(V1, V2, V3), "Exact Truncated Icosahedron (I3)"))
+            exact_points.append(
+                (
+                    get_exact_truncated_icosahedron(V1, V2, V3),
+                    "Exact Truncated Icosahedron (I3)",
+                )
+            )
         if USE_TRUNCATED_SECONDARY:
-            exact_points.append((get_exact_truncated_dodecahedron(V1, V2, V3), "Exact Truncated Dodecahedron (I3)"))
+            exact_points.append(
+                (
+                    get_exact_truncated_dodecahedron(V1, V2, V3),
+                    "Exact Truncated Dodecahedron (I3)",
+                )
+            )
     elif "O" in SYMMETRY_GROUP:  # "O" or "Oh"
         if USE_RHOMBIREGULAR:
-            exact_points.append((get_exact_rhombicosidodecahedron(V1, V2, V3), "Exact Rhombicuboctahedron"))
+            exact_points.append(
+                (
+                    get_exact_rhombicosidodecahedron(V1, V2, V3),
+                    "Exact Rhombicuboctahedron",
+                )
+            )
         if USE_TRUNCATED_PRIMARY:
-            exact_points.append((get_exact_truncated_icosahedron(V1, V2, V3), "Exact Truncated Cube"))
+            exact_points.append(
+                (get_exact_truncated_icosahedron(V1, V2, V3), "Exact Truncated Cube")
+            )
         if USE_TRUNCATED_SECONDARY:
-            exact_points.append((get_exact_truncated_dodecahedron(V1, V2, V3), "Exact Truncated Octahedron"))
+            exact_points.append(
+                (
+                    get_exact_truncated_dodecahedron(V1, V2, V3),
+                    "Exact Truncated Octahedron",
+                )
+            )
         if USE_SNUB:
-            exact_points.append((find_exact_snub_cube_seed(GROUP_CHIRAL), "Exact Snub Cube"))
+            exact_points.append(
+                (find_exact_snub_cube_seed(GROUP_CHIRAL), "Exact Snub Cube")
+            )
     else:  # "T" or "Td" or "Th"
         if USE_RHOMBIREGULAR:
-            exact_points.append((get_exact_rhombicosidodecahedron(V1, V2, V3), "Exact Rhombiregular (Cuboctahedron)"))
+            exact_points.append(
+                (
+                    get_exact_rhombicosidodecahedron(V1, V2, V3),
+                    "Exact Rhombiregular (Cuboctahedron)",
+                )
+            )
         if USE_TRUNCATED_PRIMARY:
-            exact_points.append((get_exact_truncated_icosahedron(V1, V2, V3), "Exact Truncated Tetrahedron (Primary)"))
+            exact_points.append(
+                (
+                    get_exact_truncated_icosahedron(V1, V2, V3),
+                    "Exact Truncated Tetrahedron (Primary)",
+                )
+            )
         if USE_TRUNCATED_SECONDARY:
-            exact_points.append((get_exact_truncated_dodecahedron(V1, V2, V3), "Exact Truncated Tetrahedron (Secondary)"))
+            exact_points.append(
+                (
+                    get_exact_truncated_dodecahedron(V1, V2, V3),
+                    "Exact Truncated Tetrahedron (Secondary)",
+                )
+            )
         if USE_SNUB:
-            exact_points.append((find_exact_snub_tetrahedron_seed(GROUP_CHIRAL), "Exact Snub Tetrahedron (Icosahedron)"))
+            exact_points.append(
+                (
+                    find_exact_snub_tetrahedron_seed(GROUP_CHIRAL),
+                    "Exact Snub Tetrahedron (Icosahedron)",
+                )
+            )
 
     M_triangle = np.column_stack((V1, V2, V3))
 
@@ -1524,7 +1674,9 @@ def generate_landmark_seeds(n_subdiv):
         for theta, phi_angle, label in seeds:
             chiral_seeds.append((theta, phi_angle, label))
             sin_t = np.sin(theta)
-            P_vec = np.array([sin_t * np.cos(phi_angle), sin_t * np.sin(phi_angle), np.cos(theta)])
+            P_vec = np.array(
+                [sin_t * np.cos(phi_angle), sin_t * np.sin(phi_angle), np.cos(theta)]
+            )
             P_refl = np.dot(S_REFL, P_vec)
             theta_refl = np.arccos(np.clip(P_refl[2], -1.0, 1.0))
             phi_refl = np.arctan2(P_refl[1], P_refl[0])
@@ -1570,7 +1722,9 @@ def optimize_layout_wrapper(args):
         sin_omega = np.sin(omega)
         if sin_omega < 1e-9:
             return (1.0 - t) * v1 + t * v2
-        return (np.sin((1.0 - t) * omega) / sin_omega) * v1 + (np.sin(t * omega) / sin_omega) * v2
+        return (np.sin((1.0 - t) * omega) / sin_omega) * v1 + (
+            np.sin(t * omega) / sin_omega
+        ) * v2
 
     def get_coords(v):
         return np.array([np.arccos(np.clip(v[2], -1.0, 1.0)), np.arctan2(v[1], v[0])])
@@ -1588,20 +1742,33 @@ def optimize_layout_wrapper(args):
         edges = [
             (V1, V2, "Boundary Edge V1-V2"),
             (V2, V3, "Boundary Edge V2-V3"),
-            (V3, V1, "Boundary Edge V3-V1")]
+            (V3, V1, "Boundary Edge V3-V1"),
+        ]
 
         for va, vb, edge_label in edges:
             p25 = slerp(va, vb, 0.25)
             p50 = slerp(va, vb, 0.50)
             p75 = slerp(va, vb, 0.75)
 
-            res25 = coplanarity_residuals_numba(get_coords(p25), arr_template, group_gen_3d)
-            res50 = coplanarity_residuals_numba(get_coords(p50), arr_template, group_gen_3d)
-            res75 = coplanarity_residuals_numba(get_coords(p75), arr_template, group_gen_3d)
+            res25 = coplanarity_residuals_numba(
+                get_coords(p25), arr_template, group_gen_3d
+            )
+            res50 = coplanarity_residuals_numba(
+                get_coords(p50), arr_template, group_gen_3d
+            )
+            res75 = coplanarity_residuals_numba(
+                get_coords(p75), arr_template, group_gen_3d
+            )
 
             n_coplanar = len(template) - 3
-            if np.all(np.abs(res25[:n_coplanar]) < 1e-5) and np.all(np.abs(res50[:n_coplanar]) < 1e-5) and np.all(np.abs(res75[:n_coplanar]) < 1e-5):
-                local_solutions.append((get_coords(p50), "Flat-Edge-Bypass", edge_label))
+            if (
+                np.all(np.abs(res25[:n_coplanar]) < 1e-5)
+                and np.all(np.abs(res50[:n_coplanar]) < 1e-5)
+                and np.all(np.abs(res75[:n_coplanar]) < 1e-5)
+            ):
+                local_solutions.append(
+                    (get_coords(p50), "Flat-Edge-Bypass", edge_label)
+                )
 
     # ==============================================================================
     # STANDARD SOLVER LOOP
@@ -1625,10 +1792,13 @@ def optimize_layout_wrapper(args):
 
         # Convert seed coordinates to 3D unit vector
         sin_theta = np.sin(theta_val)
-        P_seed = np.array([
-            sin_theta * np.cos(phi_val),
-            sin_theta * np.sin(phi_val),
-            np.cos(theta_val)])
+        P_seed = np.array(
+            [
+                sin_theta * np.cos(phi_val),
+                sin_theta * np.sin(phi_val),
+                np.cos(theta_val),
+            ]
+        )
 
         # Normals of the three boundary planes of the Schwarz triangle
         N12 = np.cross(V1, V2)
@@ -1656,13 +1826,17 @@ def optimize_layout_wrapper(args):
 
             prev_t = 0.0
             p0 = slerp(va, vb, 0.0)
-            prev_res_arr = coplanarity_residuals_numba(get_coords(p0), arr_template, group_gen_3d)
+            prev_res_arr = coplanarity_residuals_numba(
+                get_coords(p0), arr_template, group_gen_3d
+            )
             prev_res = prev_res_arr[0]
 
             for t_curr in t_sweep[1:]:
                 p_curr_vec = slerp(va, vb, t_curr)
                 coords_curr = get_coords(p_curr_vec)
-                res_curr_arr = coplanarity_residuals_numba(coords_curr, arr_template, group_gen_3d)
+                res_curr_arr = coplanarity_residuals_numba(
+                    coords_curr, arr_template, group_gen_3d
+                )
                 res_curr = res_curr_arr[0]
 
                 # Check for sign change (root crossing)
@@ -1675,7 +1849,9 @@ def optimize_layout_wrapper(args):
                         mid_t = (low_t + high_t) / 2.0
                         mid_vec = slerp(va, vb, mid_t)
                         mid_coords = get_coords(mid_vec)
-                        mid_res = coplanarity_residuals_numba(mid_coords, arr_template, group_gen_3d)[0]
+                        mid_res = coplanarity_residuals_numba(
+                            mid_coords, arr_template, group_gen_3d
+                        )[0]
                         if mid_res * sign_low < 0.0:
                             high_t = mid_t
                         else:
@@ -1692,14 +1868,21 @@ def optimize_layout_wrapper(args):
                         args=(arr_template, group_gen_3d),
                         method="trf",
                         xtol=1e-15,
-                        ftol=1e-15)
-                    if res_refine.success and np.all(np.abs(res_refine.fun[:n_coplanar]) < 1e-11):
+                        ftol=1e-15,
+                    )
+                    if res_refine.success and np.all(
+                        np.abs(res_refine.fun[:n_coplanar]) < 1e-11
+                    ):
                         final_coords = res_refine.x
 
                     # Validate that ALL coplanarity residuals are near-zero before accepting
-                    final_residuals = coplanarity_residuals_numba(final_coords, arr_template, group_gen_3d)
+                    final_residuals = coplanarity_residuals_numba(
+                        final_coords, arr_template, group_gen_3d
+                    )
                     if np.all(np.abs(final_residuals[:n_coplanar]) < 1e-10):
-                        local_solutions.append((final_coords, "1D-Geodesic-Bisection", label))
+                        local_solutions.append(
+                            (final_coords, "1D-Geodesic-Bisection", label)
+                        )
                         found_1d_sol = True
 
                 prev_t = t_curr
@@ -1715,7 +1898,8 @@ def optimize_layout_wrapper(args):
             args=(arr_template, group_gen_3d),
             method="trf",
             xtol=1e-14,
-            ftol=1e-14)
+            ftol=1e-14,
+        )
         if res.success and np.all(np.abs(res.fun[:n_coplanar]) < 1e-10):
             local_solutions.append((res.x, "Least-Squares", label))
 
@@ -1737,11 +1921,22 @@ def export_debug_hulls():
         p_snub = find_exact_snub_seed(GROUP_CHIRAL)
 
         targets = [
-            ("debug_hull_rhombicosidodecahedron.off", p_rhomb, "Rhombicosidodecahedron"),
+            (
+                "debug_hull_rhombicosidodecahedron.off",
+                p_rhomb,
+                "Rhombicosidodecahedron",
+            ),
             ("debug_hull_truncated_icosahedron.off", p_tr_ico, "Truncated Icosahedron"),
-            ("debug_hull_truncated_dodecahedron.off", p_tr_dod, "Truncated Dodecahedron")]
+            (
+                "debug_hull_truncated_dodecahedron.off",
+                p_tr_dod,
+                "Truncated Dodecahedron",
+            ),
+        ]
         if p_snub is not None:
-            targets.append(("debug_hull_snub_dodecahedron.off", p_snub, "Snub Icosahedron"))
+            targets.append(
+                ("debug_hull_snub_dodecahedron.off", p_snub, "Snub Icosahedron")
+            )
     elif SYMMETRY_GROUP in ["I3", "I3h"]:
         phi_g = (1.0 + np.sqrt(5.0)) / 2.0
         V1 = np.array([0.0, 1.0, phi_g]) / np.sqrt(2.0 + phi_g)
@@ -1753,9 +1948,22 @@ def export_debug_hulls():
         p_tr_dod = get_exact_truncated_dodecahedron(V1, V2, V3)
 
         targets = [
-            ("debug_hull_rhombicosidodecahedron_I3.off", p_rhomb, "Rhombicosidodecahedron (I3)"),
-            ("debug_hull_truncated_icosahedron_I3.off", p_tr_ico, "Truncated Icosahedron (I3)"),
-            ("debug_hull_truncated_dodecahedron_I3.off", p_tr_dod, "Truncated Dodecahedron (I3)")]
+            (
+                "debug_hull_rhombicosidodecahedron_I3.off",
+                p_rhomb,
+                "Rhombicosidodecahedron (I3)",
+            ),
+            (
+                "debug_hull_truncated_icosahedron_I3.off",
+                p_tr_ico,
+                "Truncated Icosahedron (I3)",
+            ),
+            (
+                "debug_hull_truncated_dodecahedron_I3.off",
+                p_tr_dod,
+                "Truncated Dodecahedron (I3)",
+            ),
+        ]
     elif "O" in SYMMETRY_GROUP:  # "O" or "Oh"
         V1 = np.array([1.0, 0.0, 0.0])
         V2 = np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0)
@@ -1769,7 +1977,8 @@ def export_debug_hulls():
         targets = [
             ("debug_hull_cuboctahedron.off", p_cub, "Cuboctahedron"),
             ("debug_hull_truncated_cube.off", p_tr_cub, "Truncated Cube"),
-            ("debug_hull_truncated_octahedron.off", p_tr_oct, "Truncated Octahedron")]
+            ("debug_hull_truncated_octahedron.off", p_tr_oct, "Truncated Octahedron"),
+        ]
         if p_snub is not None:
             targets.append(("debug_hull_snub_cube.off", p_snub, "Snub Cube"))
     else:  # "T" or "Td" or "Th"
@@ -1784,14 +1993,30 @@ def export_debug_hulls():
 
         targets = [
             ("debug_hull_cuboctahedron.off", p_cub, "Cuboctahedron"),
-            ("debug_hull_truncated_tetrahedron_primary.off", p_tr_pri, "Truncated Tetrahedron Primary"),
-            ("debug_hull_truncated_tetrahedron_secondary.off", p_tr_sec, "Truncated Tetrahedron Secondary")]
+            (
+                "debug_hull_truncated_tetrahedron_primary.off",
+                p_tr_pri,
+                "Truncated Tetrahedron Primary",
+            ),
+            (
+                "debug_hull_truncated_tetrahedron_secondary.off",
+                p_tr_sec,
+                "Truncated Tetrahedron Secondary",
+            ),
+        ]
         if p_snub is not None:
-            targets.append(("debug_hull_snub_tetrahedron.off", p_snub, "Snub Tetrahedron (Icosahedron)"))
+            targets.append(
+                (
+                    "debug_hull_snub_tetrahedron.off",
+                    p_snub,
+                    "Snub Tetrahedron (Icosahedron)",
+                )
+            )
 
     for filename, P, comment in targets:
         export_convex_hull_to_off(filename, P, comment)
     print("[DEBUG] Export complete.\n")
+
 
 # ==============================================================================
 # 8. MAIN SEARCH LOOP
@@ -1829,7 +2054,9 @@ def find_and_save_noble_polyhedra():
         export_debug_hulls()
 
     n = TARGET_NGON
-    print(f"Starting search for non-degenerate noble {n}-gonal polyhedra ({SYMMETRY_GROUP} symmetry)...")
+    print(
+        f"Starting search for non-degenerate noble {n}-gonal polyhedra ({SYMMETRY_GROUP} symmetry)..."
+    )
     print("Configured Solver: Least-Squares")
 
     valid_templates = []
@@ -1838,7 +2065,13 @@ def find_and_save_noble_polyhedra():
     if DEBUG:
         problem_file = "nobles_problem_templates.json"
         if os.path.exists(problem_file):
-            use_problems = input(f"\n[DEBUG] Found '{problem_file}'. Load and test ONLY these templates? (y/n): ").strip().lower()
+            use_problems = (
+                input(
+                    f"\n[DEBUG] Found '{problem_file}'. Load and test ONLY these templates? (y/n): "
+                )
+                .strip()
+                .lower()
+            )
             if use_problems == "y":
                 print(f"[DEBUG] Loading problem templates from '{problem_file}'...")
                 try:
@@ -1847,7 +2080,9 @@ def find_and_save_noble_polyhedra():
                     print(f"[DEBUG] Loaded {len(valid_templates)} problem templates.")
                     loaded_from_problem_file = True
                 except Exception as e:
-                    print(f"[DEBUG] Error loading problem file: {e}. Falling back to standard generation.")
+                    print(
+                        f"[DEBUG] Error loading problem file: {e}. Falling back to standard generation."
+                    )
 
     if not loaded_from_problem_file:
         if COLLAPSED_SEARCH:
@@ -1871,10 +2106,18 @@ def find_and_save_noble_polyhedra():
                 V2_axis = np.array([1.0, 1.0, -1.0]) / np.sqrt(3.0)
                 V3_axis = np.array([1.0, 0.0, 0.0])
 
-            V_target = V1_axis if COLLAPSED_ORBIT in ["5-fold", "4-fold"] else (V2_axis if COLLAPSED_ORBIT == "3-fold" else V3_axis)
+            V_target = (
+                V1_axis
+                if COLLAPSED_ORBIT in ["5-fold", "4-fold"]
+                else (V2_axis if COLLAPSED_ORBIT == "3-fold" else V3_axis)
+            )
 
             # Determine stabilizer of V_target under GROUP_GEN to match active symmetry
-            stabilizer_indices = [i for i in range(len(GROUP_GEN)) if np.allclose(np.dot(GROUP_GEN[i], V_target), V_target, atol=1e-4)]
+            stabilizer_indices = [
+                i
+                for i in range(len(GROUP_GEN))
+                if np.allclose(np.dot(GROUP_GEN[i], V_target), V_target, atol=1e-4)
+            ]
 
             # Partition GROUP_GEN into cosets
             visited_indices = set()
@@ -1887,7 +2130,9 @@ def find_and_save_noble_polyhedra():
                 visited_indices.update(coset)
 
             num_cosets = len(coset_list)
-            print(f"\n[COLLAPSED SEARCH] Orbit '{COLLAPSED_ORBIT}' has {num_cosets} unique collapsed vertices.")
+            print(
+                f"\n[COLLAPSED SEARCH] Orbit '{COLLAPSED_ORBIT}' has {num_cosets} unique collapsed vertices."
+            )
 
             # Build the vert_map mapping array
             vert_map = np.zeros(GROUP_SIZE, dtype=np.int32)
@@ -1913,9 +2158,13 @@ def find_and_save_noble_polyhedra():
                         # Standard pre-filters
                         if PRE_FILTER_TOPOLOGY:
                             arr_temp = np.array(template, dtype=np.int32)
-                            if not is_valid_topology_collapsed_numba(arr_temp, MULT_TABLE, vert_map, GROUP_SIZE, num_cosets):
+                            if not is_valid_topology_collapsed_numba(
+                                arr_temp, MULT_TABLE, vert_map, GROUP_SIZE, num_cosets
+                            ):
                                 continue
-                            if not is_single_connected_component_collapsed_numba(arr_temp, MULT_TABLE, vert_map, GROUP_SIZE, num_cosets):
+                            if not is_single_connected_component_collapsed_numba(
+                                arr_temp, MULT_TABLE, vert_map, GROUP_SIZE, num_cosets
+                            ):
                                 continue
 
                         valid_templates.append(template)
@@ -1928,7 +2177,9 @@ def find_and_save_noble_polyhedra():
 
             # Use a local identity mapping for AUT_SIGMA to prevent chiral enantiomorph pruning
             local_aut_sigma = np.arange(GROUP_SIZE, dtype=np.int32)
-            keep_mask = filter_canonical_combinations_numba(combinations_arr, n, MULT_TABLE, local_aut_sigma, GROUP_SIZE)
+            keep_mask = filter_canonical_combinations_numba(
+                combinations_arr, n, MULT_TABLE, local_aut_sigma, GROUP_SIZE
+            )
             filtered_combinations = combinations_arr[keep_mask]
 
             # Generate cyclic order permutations of the canonical combinations
@@ -1942,14 +2193,20 @@ def find_and_save_noble_polyhedra():
                         # Apply topological pre-filters if enabled
                         if PRE_FILTER_TOPOLOGY:
                             arr_temp = np.array(template, dtype=np.int32)
-                            if not is_valid_topology_numba(arr_temp, MULT_TABLE, GROUP_SIZE):
+                            if not is_valid_topology_numba(
+                                arr_temp, MULT_TABLE, GROUP_SIZE
+                            ):
                                 continue
-                            if not is_single_connected_component_numba(arr_temp, MULT_TABLE, GROUP_SIZE):
+                            if not is_single_connected_component_numba(
+                                arr_temp, MULT_TABLE, GROUP_SIZE
+                            ):
                                 continue
 
                         valid_templates.append(template)
 
-        print(f"Topology generation complete. Generated {len(valid_templates)} unique physical topologies.")
+        print(
+            f"Topology generation complete. Generated {len(valid_templates)} unique physical topologies."
+        )
 
     geom_id = 0
     dual_geom_id = 0
@@ -1968,26 +2225,34 @@ def find_and_save_noble_polyhedra():
 
     with multiprocessing.Pool(processes=num_cores) as pool:
         opt_results = pool.imap_unordered(
-            optimize_layout_wrapper,
-            opt_tasks,
-            chunksize=10)
+            optimize_layout_wrapper, opt_tasks, chunksize=10
+        )
 
         for template, local_res in opt_results:
             processed_opt += 1
             if processed_opt % 1000 == 0 or processed_opt == total_viable:
-                print(f"Progress: Optimized {processed_opt} / {total_viable} viable layouts...")
+                print(
+                    f"Progress: Optimized {processed_opt} / {total_viable} viable layouts..."
+                )
 
             for x_val, solver_used, seed_label in local_res:
                 theta, phi_val = x_val
-                P = np.array([
-                    np.sin(theta) * np.cos(phi_val),
-                    np.sin(theta) * np.sin(phi_val),
-                    np.cos(theta)])
+                P = np.array(
+                    [
+                        np.sin(theta) * np.cos(phi_val),
+                        np.sin(theta) * np.sin(phi_val),
+                        np.cos(theta),
+                    ]
+                )
 
                 vertices = [np.dot(G, P) for G in GROUP_GEN]
-                faces = [[MULT_TABLE[k][idx] for idx in template] for k in range(GROUP_SIZE)]
+                faces = [
+                    [MULT_TABLE[k][idx] for idx in template] for k in range(GROUP_SIZE)
+                ]
 
-                unique_verts, merged_faces = get_unique_vertices_and_faces(vertices, faces)
+                unique_verts, merged_faces = get_unique_vertices_and_faces(
+                    vertices, faces
+                )
                 if unique_verts is None:
                     continue
 
@@ -2048,8 +2313,12 @@ def find_and_save_noble_polyhedra():
                 produced_filenames.add(filename)
                 geom_id += 1
                 solver_counts[solver_used] = solver_counts.get(solver_used, 0) + 1
-                print(f"\n--> Discovery {geom_id} ({solver_used}): Coordinate: [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}] | Filename: {filename}")
-                dual_written = export_to_off(filename, P, template, seed_label, produced_filenames)
+                print(
+                    f"\n--> Discovery {geom_id} ({solver_used}): Coordinate: [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}] | Filename: {filename}"
+                )
+                dual_written = export_to_off(
+                    filename, P, template, seed_label, produced_filenames
+                )
                 if dual_written:
                     dual_geom_id += 1
 
