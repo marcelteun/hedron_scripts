@@ -27,6 +27,7 @@ facetings = "hedron_scripts.facetings:main"
 leonardo = "hedron_scripts.leonardo:main"
 offchecker = "hedron_scripts.offchecker:main"
 offviewer = "hedron_scripts.offviewer:main"
+generate-nobles = "hedron_scripts.nobles:find_and_save_noble_polyhedra"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
