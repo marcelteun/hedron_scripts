@@ -173,67 +173,65 @@ def generate_tetrahedral_group_td():
     return rotations, rotations + reflections, rotations + inversions
 
 
-# Generate symmetry operations based on configuration
-if "I" in SYMMETRY_GROUP:
-    GROUP_CHIRAL, GROUP_FULL = generate_icosahedral_group_ih()
-elif "O" in SYMMETRY_GROUP:
-    GROUP_CHIRAL, GROUP_FULL = generate_octahedral_group_oh()
-else:
-    GROUP_CHIRAL, GROUP_FULL_TD, GROUP_FULL_TH = generate_tetrahedral_group_td()
-    if SYMMETRY_GROUP == "Th":
-        GROUP_FULL = GROUP_FULL_TH
+def configure_symmetry_group(symmetry_group):
+    """Set the symmetry group and rebuild its derived geometry tables."""
+    global SYMMETRY_GROUP, GROUP_FULL, GROUP_GEN, GROUP_SIZE
+    global GROUP_GEN_3D, MULT_TABLE, S_REFL, AUT_SIGMA
+
+    SYMMETRY_GROUP = symmetry_group
+    if "I" in SYMMETRY_GROUP:
+        GROUP_CHIRAL, GROUP_FULL = generate_icosahedral_group_ih()
+    elif "O" in SYMMETRY_GROUP:
+        GROUP_CHIRAL, GROUP_FULL = generate_octahedral_group_oh()
     else:
-        GROUP_FULL = GROUP_FULL_TD
+        GROUP_CHIRAL, GROUP_FULL_TD, GROUP_FULL_TH = generate_tetrahedral_group_td()
+        GROUP_FULL = GROUP_FULL_TH if SYMMETRY_GROUP == "Th" else GROUP_FULL_TD
 
-if SYMMETRY_GROUP in ["Ih", "I3h", "Oh", "Td", "Th"]:
-    GROUP_GEN = GROUP_FULL
-else:
-    GROUP_GEN = GROUP_CHIRAL
+    if SYMMETRY_GROUP in ["Ih", "I3h", "Oh", "Td", "Th"]:
+        GROUP_GEN = GROUP_FULL
+    else:
+        GROUP_GEN = GROUP_CHIRAL
 
-GROUP_SIZE = len(GROUP_GEN)
-GROUP_GEN_3D = np.ascontiguousarray(np.array(GROUP_GEN, dtype=np.float64))
+    GROUP_SIZE = len(GROUP_GEN)
+    GROUP_GEN_3D = np.ascontiguousarray(np.array(GROUP_GEN, dtype=np.float64))
 
-# ==============================================================================
-# 2. SYMBOLIC MULTIPLICATION TABLE
-# ==============================================================================
-MULT_TABLE = np.zeros((GROUP_SIZE, GROUP_SIZE), dtype=int)
-for i in range(GROUP_SIZE):
-    for j in range(GROUP_SIZE):
-        prod = np.dot(GROUP_GEN[i], GROUP_GEN[j])
-        best_k = 0
-        best_dist = 1e9
-        for k in range(GROUP_SIZE):
-            dist = np.linalg.norm(prod - GROUP_GEN[k])
-            if dist < best_dist:
-                best_dist = dist
-                best_k = k
-        MULT_TABLE[i][j] = best_k
-
-# Identify a true plane reflection (improper rotation with trace ≈ 1.0)
-S_REFL = None
-for G in GROUP_FULL:
-    if np.linalg.det(G) < 0 and np.abs(np.trace(G) - 1.0) < 1e-4:
-        S_REFL = G
-        break
-
-# Generate the automorphism on the elements of the generator group
-AUT_SIGMA = np.zeros(GROUP_SIZE, dtype=int)
-if SYMMETRY_GROUP in ["Ih", "I3h", "Oh", "Td", "Th"]:
-    # For full groups, reflections are inner, so AUT_SIGMA can be the identity mapping
+    MULT_TABLE = np.zeros((GROUP_SIZE, GROUP_SIZE), dtype=int)
     for i in range(GROUP_SIZE):
-        AUT_SIGMA[i] = i
-else:
-    # For chiral groups, map via S_REFL
-    for i in range(GROUP_SIZE):
-        M = np.dot(S_REFL, np.dot(GROUP_GEN[i], S_REFL))
-        best_j = 0
-        best_dist = 1e9
         for j in range(GROUP_SIZE):
-            dist = np.linalg.norm(M - GROUP_GEN[j])
-            if dist < best_dist:
-                best_dist = dist
-                best_j = j
-        AUT_SIGMA[i] = best_j
+            prod = np.dot(GROUP_GEN[i], GROUP_GEN[j])
+            best_k = 0
+            best_dist = 1e9
+            for k in range(GROUP_SIZE):
+                dist = np.linalg.norm(prod - GROUP_GEN[k])
+                if dist < best_dist:
+                    best_dist = dist
+                    best_k = k
+            MULT_TABLE[i][j] = best_k
+
+    S_REFL = None
+    for G in GROUP_FULL:
+        if np.linalg.det(G) < 0 and np.abs(np.trace(G) - 1.0) < 1e-4:
+            S_REFL = G
+            break
+
+    AUT_SIGMA = np.zeros(GROUP_SIZE, dtype=int)
+    if SYMMETRY_GROUP in ["Ih", "I3h", "Oh", "Td", "Th"]:
+        for i in range(GROUP_SIZE):
+            AUT_SIGMA[i] = i
+    else:
+        for i in range(GROUP_SIZE):
+            M = np.dot(S_REFL, np.dot(GROUP_GEN[i], S_REFL))
+            best_j = 0
+            best_dist = 1e9
+            for j in range(GROUP_SIZE):
+                dist = np.linalg.norm(M - GROUP_GEN[j])
+                if dist < best_dist:
+                    best_dist = dist
+                    best_j = j
+            AUT_SIGMA[i] = best_j
+
+
+configure_symmetry_group(SYMMETRY_GROUP)
 
 # ==============================================================================
 # 3. TOPOLOGICAL FILTERING (Numba Accelerated)
@@ -2051,11 +2049,14 @@ def canonicalize_face_cycle(coords):
     return representations[0]
 
 
-def find_and_save_noble_polyhedra(output_dir="noble"):
+def find_and_save_noble_polyhedra(output_dir="noble", symmetry_group=None):
     """Searches for unique N-gonal noble polyhedra. Uses a parallelized CPU
     worker pool and JIT-compiled topological filters for maximum performance.
     """
     SUPPRESS_COPLANAR = True
+
+    if symmetry_group is not None and symmetry_group != SYMMETRY_GROUP:
+        configure_symmetry_group(symmetry_group)
 
     if DEBUG:
         export_debug_hulls(output_dir)

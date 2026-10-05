@@ -86,7 +86,8 @@ and face gonality. The search uses all available CPU cores and may take a long
 time for complex configurations. It writes discovered OFF files to `noble/` relative to the directory where the
 command is run by default; colour variants are written to
 `noble/multicolour/`, and duals are produced when enabled. Use `-o` or
-`--output` to choose a different output directory.
+`--output` to choose a different output directory, and `-s` or `--symmetry`
+to select the symmetry group.
 
 Configure the search in `src/hedron_scripts/lib/nobles.py` before running it.
 The main settings include `SYMMETRY_GROUP`, `TARGET_NGON`, seed subdivision,
@@ -95,6 +96,7 @@ colouring, and dual generation.
 ```sh
 uv run generate-nobles
 uv run generate-nobles --output generated-nobles
+uv run generate-nobles --symmetry Ih
 generate-nobles
 ```
 
