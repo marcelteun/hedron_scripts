@@ -803,11 +803,18 @@ def find_n_colouring(faces, num_vertices, mode="Valency", find_all=False):
 # ==============================================================================
 
 
-def export_to_off(filename, P, template, seed_label=None, produced_filenames=None):
-    """Generates the full 3D mesh and exports it to the 'noble' folder.
+def export_to_off(
+    filename,
+    P,
+    template,
+    seed_label=None,
+    produced_filenames=None,
+    output_dir="noble",
+):
+    """Generates the full 3D mesh and exports it to the output directory.
     Also generates and exports its topological dual with dual gonality and Wiener index in its filename.
     """
-    os.makedirs("noble", exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
     vertices = [np.dot(G, P) for G in GROUP_GEN]
     faces = [[MULT_TABLE[k][idx] for idx in template] for k in range(GROUP_SIZE)]
@@ -851,8 +858,8 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
         "255 0 128",
     ]  # 11: Rose
 
-    # 1. WRITE NORMAL SINGLE-COLOR FILE (to noble/)
-    normal_filepath = os.path.join("noble", clean_filename + ".off")
+    # 1. WRITE NORMAL SINGLE-COLOR FILE
+    normal_filepath = os.path.join(output_dir, clean_filename + ".off")
     with open(normal_filepath, "w") as f:
         f.write("OFF\n")
         f.write(f"# {clean_filename}.off (Single Colour)\n")
@@ -876,7 +883,7 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
 
     print(f"--> Saved normal to: {normal_filepath}")
 
-    # 2. WRITE MULTICOLOR FILE (to noble/multicolour/)
+    # 2. WRITE MULTICOLOR FILE
     if N_COLOURS != "Off":
         if ALT_COLOURINGS:
             all_colors = find_n_colouring(
@@ -890,7 +897,7 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
 
         for c_idx, colors in enumerate(all_colors):
             if colors is not None:
-                os.makedirs(os.path.join("noble", "multicolour"), exist_ok=True)
+                os.makedirs(os.path.join(output_dir, "multicolour"), exist_ok=True)
                 v_colors = len(np.unique(colors))
                 if ALT_COLOURINGS and len(all_colors) > 1:
                     multicolour_filename = (
@@ -899,7 +906,7 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
                 else:
                     multicolour_filename = f"{clean_filename}_{v_colors}colour.off"
                 multicolour_filepath = os.path.join(
-                    "noble", "multicolour", multicolour_filename
+                    output_dir, "multicolour", multicolour_filename
                 )
                 with open(multicolour_filepath, "w") as f:
                     f.write("OFF\n")
@@ -1070,8 +1077,8 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
     else:
         dual_base = f"{parts[0]}-{n_dual}-{len(dual_vertices)}-{len(dual_faces)}-{num_dual_edges}-W{int(wiener_number_dual)}_dual"
 
-    # 3. WRITE NORMAL DUAL FILE (to noble/)
-    dual_filepath = os.path.join("noble", dual_base + ".off")
+    # 3. WRITE NORMAL DUAL FILE
+    dual_filepath = os.path.join(output_dir, dual_base + ".off")
     with open(dual_filepath, "w") as f:
         f.write("OFF\n")
         f.write(f"# {dual_base}.off (Single Colour)\n")
@@ -1094,7 +1101,7 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
 
     print(f"--> Saved normal dual to: {dual_filepath}")
 
-    # 4. WRITE MULTICOLOR DUAL FILE (to noble/multicolour/)
+    # 4. WRITE MULTICOLOR DUAL FILE
     if N_COLOURS != "Off":
         if ALT_COLOURINGS:
             all_dual_colors = find_n_colouring(
@@ -1108,7 +1115,7 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
 
         for c_idx, dual_colors in enumerate(all_dual_colors):
             if dual_colors is not None:
-                os.makedirs(os.path.join("noble", "multicolour"), exist_ok=True)
+                os.makedirs(os.path.join(output_dir, "multicolour"), exist_ok=True)
                 v_dual_colors = len(np.unique(dual_colors))
                 if ALT_COLOURINGS and len(all_dual_colors) > 1:
                     dual_multicolour_filename = (
@@ -1117,7 +1124,7 @@ def export_to_off(filename, P, template, seed_label=None, produced_filenames=Non
                 else:
                     dual_multicolour_filename = f"{dual_base}_{v_dual_colors}colour.off"
                 dual_multicolour_filepath = os.path.join(
-                    "noble", "multicolour", dual_multicolour_filename
+                    output_dir, "multicolour", dual_multicolour_filename
                 )
                 with open(dual_multicolour_filepath, "w") as f:
                     f.write("OFF\n")
@@ -1225,13 +1232,13 @@ def get_untriangulated_faces(vertices, hull):
     return untriangulated_faces
 
 
-def export_convex_hull_to_off(filename, P, comment=""):
+def export_convex_hull_to_off(filename, P, comment="", output_dir="noble"):
     """Generates the vertices of the point P under GROUP_GEN,
     computes its 3D convex hull, merges coplanar faces to avoid triangulation,
     and saves it as an OFF file with color formatting.
     """
-    os.makedirs("noble", exist_ok=True)
-    filepath = os.path.join("noble", filename)
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, filename)
 
     vertices = np.array([np.dot(G, P) for G in GROUP_GEN])
 
@@ -1906,8 +1913,8 @@ def optimize_layout_wrapper(args):
     return template, local_solutions
 
 
-def export_debug_hulls():
-    """Generates and exports the convex hulls of the uniform generator seeds to 'noble' folder."""
+def export_debug_hulls(output_dir="noble"):
+    """Generates and exports convex hulls of the uniform generator seeds."""
     print("\n[DEBUG] Exporting convex hulls of uniform generator seeds...")
     if SYMMETRY_GROUP in ["I", "Ih"]:
         phi_g = (1.0 + np.sqrt(5.0)) / 2.0
@@ -2014,7 +2021,7 @@ def export_debug_hulls():
             )
 
     for filename, P, comment in targets:
-        export_convex_hull_to_off(filename, P, comment)
+        export_convex_hull_to_off(filename, P, comment, output_dir)
     print("[DEBUG] Export complete.\n")
 
 
@@ -2044,14 +2051,14 @@ def canonicalize_face_cycle(coords):
     return representations[0]
 
 
-def find_and_save_noble_polyhedra():
+def find_and_save_noble_polyhedra(output_dir="noble"):
     """Searches for unique N-gonal noble polyhedra. Uses a parallelized CPU
     worker pool and JIT-compiled topological filters for maximum performance.
     """
     SUPPRESS_COPLANAR = True
 
     if DEBUG:
-        export_debug_hulls()
+        export_debug_hulls(output_dir)
 
     n = TARGET_NGON
     print(
@@ -2317,7 +2324,12 @@ def find_and_save_noble_polyhedra():
                     f"\n--> Discovery {geom_id} ({solver_used}): Coordinate: [{P[0]:.16f}, {P[1]:.16f}, {P[2]:.16f}] | Filename: {filename}"
                 )
                 dual_written = export_to_off(
-                    filename, P, template, seed_label, produced_filenames
+                    filename,
+                    P,
+                    template,
+                    seed_label,
+                    produced_filenames,
+                    output_dir,
                 )
                 if dual_written:
                     dual_geom_id += 1
